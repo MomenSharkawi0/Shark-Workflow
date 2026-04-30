@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tic-Tac-Toe</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --panel: #1e293b;
+      --cell: #334155;
+      --cell-hover: #475569;
+      --accent-x: #60a5fa;     /* blue */
+      --accent-o: #f472b6;     /* pink */
+      --win: #34d399;          /* emerald */
+      --text: #f1f5f9;
+      --dim: #94a3b8;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      min-height: 100vh;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 1.5rem;
+      background: radial-gradient(circle at 30% 30%, #1e293b, var(--bg));
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+      padding: 1rem;
+    }
+    h1 {
+      font-size: clamp(1.5rem, 3vw, 2.25rem);
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+    h1 .x { color: var(--accent-x); }
+    h1 .o { color: var(--accent-o); }
+    #status {
+      font-size: 1rem;
+      color: var(--dim);
+      min-height: 1.5em;
+      text-align: center;
+    }
+    #status .name-x { color: var(--accent-x); font-weight: 600; }
+    #status .name-o { color: var(--accent-o); font-weight: 600; }
+    #status.win   { color: var(--win); font-weight: 600; font-size: 1.125rem; }
+    #status.draw  { color: var(--dim); font-style: italic; }
+    #board {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0.5rem;
+      width: min(360px, 90vw);
+      aspect-ratio: 1 / 1;
+      padding: 0.5rem;
+      background: var(--panel);
+      border-radius: 0.75rem;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+    }
+    .cell {
+      background: var(--cell);
+      border: none;
+      border-radius: 0.5rem;
+      font-size: clamp(2.5rem, 8vw, 3.5rem);
+      font-weight: 700;
+      color: var(--text);
+      cursor: pointer;
+      transition: background 0.15s ease, transform 0.1s ease;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .cell:not(.taken):not(.locked):hover {
+      background: var(--cell-hover);
+      transform: scale(1.02);
+    }
+    .cell.taken      { cursor: default; }
+    .cell.locked     { cursor: not-allowed; }
+    .cell.x          { color: var(--accent-x); }
+    .cell.o          { color: var(--accent-o); }
+    .cell.win {
+      background: var(--win);
+      color: #052e1a;
+      animation: pop 0.4s ease;
+    }
+    @keyframes pop {
+      0%   { transform: scale(1); }
+      50%  { transform: scale(1.08); }
+      100% { transform: scale(1); }
+    }
+    #controls {
+      display: flex; gap: 0.75rem;
+    }
+    button.btn {
+      background: var(--accent-x);
+      color: #062c54;
+      border: none;
+      padding: 0.65rem 1.25rem;
+      border-radius: 0.5rem;
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: filter 0.15s ease, transform 0.1s ease;
+    }
+    button.btn:hover { filter: brightness(1.15); transform: translateY(-1px); }
+    button.btn:active { transform: translateY(0); }
+    button.btn.secondary {
+      background: var(--cell);
+      color: var(--text);
+    }
+    .scoreboard {
+      display: flex;
+      gap: 1.5rem;
+      font-size: 0.875rem;
+      color: var(--dim);
+    }
+    .scoreboard span strong { color: var(--text); }
+    .scoreboard .x strong { color: var(--accent-x); }
+    .scoreboard .o strong { color: var(--accent-o); }
+    .hint { font-size: 0.75rem; color: var(--dim); }
+  </style>
+</head>
+<body>
+  <h1>Tic-Tac-Toe — <span class="x">X</span> vs <span class="o">O</span></h1>
+  <div id="status">Player <span class="name-x">X</span>'s turn</div>
+  <div id="board" role="grid" aria-label="Tic-tac-toe board"></div>
+  <div class="scoreboard">
+    <span class="x">X wins: <strong id="score-x">0</strong></span>
+    <span class="o">O wins: <strong id="score-o">0</strong></span>
+    <span>Draws: <strong id="score-d">0</strong></span>
+  </div>
+  <div id="controls">
+    <button class="btn" id="reset">New Game</button>
+    <button class="btn secondary" id="reset-all">Reset Scores</button>
+  </div>
+  <p class="hint">Press <kbd>R</kbd> to start a new game.</p>
+
+  <script>
+    (() => {
+      'use strict';
+
+      // --- State ---
+      const board = Array(9).fill(null);          // null | 'X' | 'O'
+      let currentPlayer = 'X';
+      let gameOver = false;
+      const score = { X: 0, O: 0, D: 0 };
+
+      // The 8 winning lines: 3 rows, 3 columns, 2 diagonals.
+      const WIN_LINES = [
+        [0, 1, 2], [3, 4, 5], [6, 7, 8],   // rows
+        [0, 3, 6], [1, 4, 7], [2, 5, 8],   // columns
+        [0, 4, 8], [2, 4, 6],              // diagonals
+      ];
+
+      // --- DOM refs ---
+      const boardEl = document.getElementById('board');
+      const statusEl = document.getElementById('status');
+      const cells = [];
+      const scoreXEl = document.getElementById('score-x');
+      const scoreOEl = document.getElementById('score-o');
+      const scoreDEl = document.getElementById('score-d');
+
+      // --- Build board ---
+      for (let i = 0; i < 9; i++) {
+        const cell = document.createElement('button');
+        cell.className = 'cell';
+        cell.dataset.idx = String(i);
+        cell.setAttribute('role', 'gridcell');
+        cell.setAttribute('aria-label', `Cell ${i + 1}, empty`);
+        cell.addEventListener('click', () => handleClick(i));
+        boardEl.appendChild(cell);
+        cells.push(cell);
+      }
+
+      function handleClick(idx) {
+        if (gameOver || board[idx] !== null) return;
+
+        board[idx] = currentPlayer;
+        const cell = cells[idx];
+        cell.textContent = currentPlayer;
+        cell.classList.add('taken', currentPlayer.toLowerCase());
+        cell.setAttribute('aria-label', `Cell ${idx + 1}, ${currentPlayer}`);
+
+        const winLine = checkWin(currentPlayer);
+        if (winLine) {
+          declareWin(currentPlayer, winLine);
+          return;
+        }
+        if (board.every(c => c !== null)) {
+          declareDraw();
+          return;
+        }
+
+        currentPlayer = currentPlayer === 'X' ? 'O' : 'X';
+        renderTurn();
+      }
+
+      function checkWin(player) {
+        for (const line of WIN_LINES) {
+          if (line.every(i => board[i] === player)) return line;
+        }
+        return null;
+      }
+
+      function declareWin(player, line) {
+        gameOver = true;
+        score[player]++;
+        updateScoreboard();
+        line.forEach(i => cells[i].classList.add('win'));
+        cells.forEach(c => { if (!c.classList.contains('taken')) c.classList.add('locked'); });
+        statusEl.innerHTML = `Player <span class="name-${player.toLowerCase()}">${player}</span> wins! 🎉`;
+        statusEl.className = 'win';
+      }
+
+      function declareDraw() {
+        gameOver = true;
+        score.D++;
+        updateScoreboard();
+        cells.forEach(c => c.classList.add('locked'));
+        statusEl.textContent = "It's a draw.";
+        statusEl.className = 'draw';
+      }
+
+      function renderTurn() {
+        statusEl.innerHTML = `Player <span class="name-${currentPlayer.toLowerCase()}">${currentPlayer}</span>'s turn`;
+        statusEl.className = '';
+      }
+
+      function updateScoreboard() {
+        scoreXEl.textContent = score.X;
+        scoreOEl.textContent = score.O;
+        scoreDEl.textContent = score.D;
+      }
+
+      function newGame() {
+        for (let i = 0; i < 9; i++) board[i] = null;
+        currentPlayer = 'X';
+        gameOver = false;
+        cells.forEach((cell, i) => {
+          cell.textContent = '';
+          cell.className = 'cell';
+          cell.setAttribute('aria-label', `Cell ${i + 1}, empty`);
+        });
+        renderTurn();
+      }
+
+      function resetAll() {
+        score.X = score.O = score.D = 0;
+        updateScoreboard();
+        newGame();
+      }
+
+      document.getElementById('reset').addEventListener('click', newGame);
+      document.getElementById('reset-all').addEventListener('click', resetAll);
+
+      // Keyboard shortcut: 'r' starts a new game.
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'r' || e.key === 'R') newGame();
+      });
+    })();
+  </script>
+</body>
+</html>
