@@ -1,8 +1,14 @@
 # =============================================================================
-# Workflow runtime state (project-specific, generated at runtime)
+# Workflow runtime state (project-specific, generated at runtime).
+#
+# IMPORTANT: anchor these to the repo root with a leading slash. On Windows
+# git defaults to core.ignorecase=true, so a bare `WORKFLOW/` would silently
+# also match `roo-code-fork/src/workflow/` — which is the entire integration
+# layer. Same for `plans/` (we have a docs/plans dir intent and the runtime
+# `plans/` only at the root).
 # =============================================================================
-WORKFLOW/
-plans/
+/WORKFLOW/
+/plans/
 *.log
 *.lock
 
