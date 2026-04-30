@@ -718,13 +718,8 @@ async function switchMode(mode) {
 
 function updateActiveModeButton(mode) {
   document.querySelectorAll('.mode-btn').forEach(btn => {
-    if (btn.dataset.mode === mode) {
-      btn.style.background = 'rgba(99,102,241,0.2)';
-      btn.style.borderColor = 'rgba(99,102,241,0.6)';
-    } else {
-      btn.style.background = '';
-      btn.style.borderColor = '';
-    }
+    if (btn.dataset.mode === mode) btn.classList.add('active');
+    else btn.classList.remove('active');
   });
 }
 

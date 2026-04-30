@@ -225,6 +225,50 @@ body {
 
 .btn-group { display: flex; gap: 0.75rem; flex-wrap: wrap; }
 
+/* Mode-switch buttons — dark glass with indigo accent on active */
+.mode-btn {
+  background: rgba(15, 23, 42, 0.6);
+  color: #e2e8f0;
+  border: 1px solid rgba(99, 102, 241, 0.25);
+  font-weight: 500;
+  text-align: left;
+  padding: 0.7rem 0.9rem;
+  font-size: 0.8125rem;
+  letter-spacing: 0.01em;
+  transition: background 0.2s ease, border-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+}
+.mode-btn:hover {
+  background: rgba(99, 102, 241, 0.12);
+  border-color: rgba(99, 102, 241, 0.5);
+  color: #fff;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(99, 102, 241, 0.18);
+}
+.mode-btn.active,
+.mode-btn[data-active="true"] {
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.28), rgba(168, 85, 247, 0.22));
+  border-color: rgba(99, 102, 241, 0.7);
+  color: #fff;
+  box-shadow: 0 0 0 1px rgba(99, 102, 241, 0.4) inset, 0 6px 18px rgba(99, 102, 241, 0.25);
+}
+
+/* Start/Abort row: tighten spacing on the new workflow panel */
+#startCycleBtn { padding: 0.7rem 1.1rem; font-size: 0.875rem; }
+#abortCycleBtn { padding: 0.7rem 1rem; font-size: 0.875rem; }
+
+/* Inputs in the New Workflow panel */
+#featureRequestInput::placeholder { color: rgba(148, 163, 184, 0.55); }
+#featureRequestInput:focus {
+  outline: none;
+  border-color: rgba(99, 102, 241, 0.6);
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.12);
+}
+#stackHintSelect, #autonomySelect {
+  cursor: pointer;
+  transition: border-color 0.2s ease;
+}
+#stackHintSelect:hover, #autonomySelect:hover { border-color: rgba(99, 102, 241, 0.5); }
+
 /* ============================================================================
    Metrics
    ============================================================================ */
