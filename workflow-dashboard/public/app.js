@@ -609,6 +609,144 @@ async function sendPromptToAgent() {
 }
 
 // ============================================================================
+// NEW: Start Workflow + Mode Switcher
+// ============================================================================
+
+function setStartFeedback(msg, kind) {
+  const el = document.getElementById('startCycleFeedback');
+  if (!el) return;
+  el.textContent = msg;
+  el.style.color = kind === 'ok' ? 'var(--accent-emerald, #10b981)' :
+                   kind === 'fail' ? 'var(--accent-red, #ef4444)' :
+                   '';
+}
+
+async function startNewCycle() {
+  const inputEl = document.getElementById('featureRequestInput');
+  const stackEl = document.getElementById('stackHintSelect');
+  const autonomyEl = document.getElementById('autonomySelect');
+  const btn = document.getElementById('startCycleBtn');
+
+  const featureRequest = (inputEl.value || '').trim();
+  if (!featureRequest) { setStartFeedback('Please describe the feature first.', 'fail'); inputEl.focus(); return; }
+  if (featureRequest.length < 15) { setStartFeedback('Please be more specific (at least 15 characters).', 'fail'); inputEl.focus(); return; }
+
+  const payload = {
+    featureRequest,
+    autonomy: autonomyEl ? autonomyEl.value : 'semi-auto',
+  };
+  if (stackEl && stackEl.value) payload.stack = stackEl.value;
+
+  btn.classList.add('btn-loading');
+  btn.querySelector('span').textContent = 'Starting...';
+  setStartFeedback('Sending to engine...', '');
+
+  try {
+    const res = await fetch('/api/cycle/start', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (res.ok && data.success) {
+      setStartFeedback('🚀 Cycle started. Switching to Director and beginning PHASE_PLANNING.', 'ok');
+      inputEl.value = '';
+      // Refresh current mode display shortly after
+      setTimeout(refreshCurrentMode, 800);
+    } else {
+      setStartFeedback(`❌ ${data.error || 'Failed to start cycle (is the Roo Code extension running?)'}`, 'fail');
+    }
+  } catch (err) {
+    setStartFeedback('❌ Bridge unreachable. Open VS Code with the Roo Code extension.', 'fail');
+  } finally {
+    btn.classList.remove('btn-loading');
+    btn.querySelector('span').textContent = 'Start Workflow';
+  }
+}
+
+async function abortCurrentCycle() {
+  if (!confirm('Abort the current cycle? Files written so far stay; the engine returns to INIT.')) return;
+  const btn = document.getElementById('abortCycleBtn');
+  btn.classList.add('btn-loading');
+  try {
+    const res = await fetch('/api/cycle/abort', { method: 'POST', headers: { 'Content-Type': 'application/json' } });
+    const data = await res.json();
+    setStartFeedback(res.ok ? 'Cycle aborted.' : `❌ ${data.error || 'Abort failed'}`, res.ok ? 'ok' : 'fail');
+  } catch {
+    setStartFeedback('❌ Bridge unreachable.', 'fail');
+  } finally {
+    btn.classList.remove('btn-loading');
+  }
+}
+
+const MODE_LABELS = {
+  'director': '🎯 Director',
+  'planner': '📋 Planner',
+  'executor': '⚙️ Executor',
+  'workflow-master': '🚀 Workflow Master',
+  'code': '💻 Code (Roo default)',
+  'ask': '❓ Ask (Roo default)',
+  'architect': '🏛️ Architect (Roo default)',
+  'debug': '🐛 Debug (Roo default)',
+};
+
+async function switchMode(mode) {
+  const fb = document.getElementById('modeSwitchFeedback');
+  fb.textContent = `Switching to ${MODE_LABELS[mode] || mode}...`;
+  fb.style.color = '';
+  try {
+    const res = await fetch('/api/mode/switch', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode })
+    });
+    const data = await res.json();
+    if (res.ok && data.success) {
+      fb.textContent = `Active mode is now ${MODE_LABELS[mode] || mode}.`;
+      fb.style.color = 'var(--accent-emerald, #10b981)';
+      updateActiveModeButton(mode);
+      const labelEl = document.getElementById('currentModeLabel');
+      if (labelEl) labelEl.textContent = MODE_LABELS[mode] || mode;
+    } else {
+      fb.textContent = `❌ ${data.error || 'Switch failed.'}`;
+      fb.style.color = 'var(--accent-red, #ef4444)';
+    }
+  } catch {
+    fb.textContent = '❌ Bridge unreachable. Is Roo Code running?';
+    fb.style.color = 'var(--accent-red, #ef4444)';
+  }
+}
+
+function updateActiveModeButton(mode) {
+  document.querySelectorAll('.mode-btn').forEach(btn => {
+    if (btn.dataset.mode === mode) {
+      btn.style.background = 'rgba(99,102,241,0.2)';
+      btn.style.borderColor = 'rgba(99,102,241,0.6)';
+    } else {
+      btn.style.background = '';
+      btn.style.borderColor = '';
+    }
+  });
+}
+
+async function refreshCurrentMode() {
+  try {
+    const res = await fetch('/api/mode/current');
+    if (!res.ok) return;
+    const data = await res.json();
+    if (data.mode) {
+      const labelEl = document.getElementById('currentModeLabel');
+      if (labelEl) labelEl.textContent = MODE_LABELS[data.mode] || data.mode;
+      updateActiveModeButton(data.mode);
+    }
+  } catch { /* bridge offline */ }
+}
+
+// Poll current mode every 3s so the UI stays accurate
+setInterval(refreshCurrentMode, 3000);
+// Initial fetch on load
+window.addEventListener('DOMContentLoaded', () => setTimeout(refreshCurrentMode, 500));
+
+// ============================================================================
 // QUALITY GATES (fallback polling — gate data not yet in SSE)
 // ============================================================================
 

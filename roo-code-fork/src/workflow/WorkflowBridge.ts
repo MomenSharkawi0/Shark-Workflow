@@ -204,7 +204,7 @@ export class WorkflowBridge {
                 if (url === "/api/chat/send" && req.method === "POST") {
                     const { message } = JSON.parse(await this.readBody(req))
                     if (!message) { this.sendJson(res, { error: "Missing message" }, 400); return }
-                    
+
                     const userMsg = {
                         id: `msg_${++this.chatIdCounter}`,
                         role: 'user', content: message,
@@ -213,27 +213,108 @@ export class WorkflowBridge {
                     this.chatHistory.push(userMsg)
                     this.broadcastSSE({ type: 'chat_message', ...userMsg } as any)
                     this.logActivity('chat', `User: ${message.substring(0, 80)}`, 'info')
-                    
-                    // Send to bridge/send endpoint logic
+
+                    // === INTELLIGENT CHAT ROUTING ===
+                    // If we are at INIT (no cycle in progress) and the engine is available,
+                    // treat this message as the feature request that kicks off a new workflow.
+                    // The engine writes FEATURE_REQUEST.md, advances INIT -> PHASE_PLANNING,
+                    // switches the agent to Director mode, and (in semi/full-auto) sends the
+                    // generated Director prompt automatically.
+                    //
+                    // If a cycle is already in progress, forward the chat message to the
+                    // currently active task as a follow-up note (legacy behavior).
                     let success = false
-                    const currentTask = this.provider.getCurrentTask ? this.provider.getCurrentTask() : null
-                    if (currentTask && this.provider.postMessageToWebview) {
-                        await this.provider.postMessageToWebview({ type: "invoke", invoke: "sendMessage", text: message })
-                        success = true
-                    } else if (this.provider.createTask) {
-                        await this.provider.createTask(message)
-                        success = true
+                    let routingNote = ''
+                    const engineState = this.engine ? this.engine.getState() : null
+                    const isAtInit = engineState && (engineState.phase === "INIT" || !engineState.isRunning)
+
+                    if (this.engine && isAtInit) {
+                        const result = await this.engine.startCycle(message)
+                        success = !!result.success
+                        routingNote = success
+                            ? '🚀 Workflow cycle started. Switching to Director mode and beginning PHASE_PLANNING.'
+                            : `❌ Failed to start cycle: ${result.error || 'unknown error'}`
+                    } else {
+                        const currentTask = this.provider.getCurrentTask ? this.provider.getCurrentTask() : null
+                        if (currentTask && this.provider.postMessageToWebview) {
+                            await this.provider.postMessageToWebview({ type: "invoke", invoke: "sendMessage", text: message })
+                            success = true
+                            routingNote = '✅ Message delivered to active task.'
+                        } else if (this.provider.createTask) {
+                            await this.provider.createTask(message)
+                            success = true
+                            routingNote = '✅ Message delivered as a new task.'
+                        } else {
+                            routingNote = '❌ No active task and createTask is unavailable.'
+                        }
                     }
-                    
+
                     const agentMsg = {
                         id: `msg_${++this.chatIdCounter}`,
                         role: 'agent',
-                        content: success ? '✅ Message delivered to agent.' : '❌ Failed to deliver message.',
+                        content: routingNote || (success ? '✅ Delivered.' : '❌ Failed.'),
                         timestamp: new Date().toISOString(), status: success ? 'delivered' : 'failed'
                     }
                     this.chatHistory.push(agentMsg)
                     this.broadcastSSE({ type: 'chat_message', ...agentMsg } as any)
                     this.sendJson(res, { success, userMsg, agentMsg }); return
+                }
+
+                // === EXPLICIT WORKFLOW CONTROL ===
+                if (url === "/api/cycle/start" && req.method === "POST") {
+                    if (!this.engine) { this.sendJson(res, { error: "Engine not initialized" }, 503); return }
+                    const body = JSON.parse(await this.readBody(req) || "{}")
+                    const featureRequest = (body.featureRequest || "").toString().trim()
+                    if (!featureRequest) { this.sendJson(res, { error: "featureRequest is required" }, 400); return }
+                    if (body.autonomy && ["manual", "semi-auto", "full-auto"].includes(body.autonomy)) {
+                        this.engine.setAutonomy(body.autonomy)
+                    }
+                    const stack = typeof body.stack === "string" ? body.stack.trim() : undefined
+                    const result = await this.engine.startCycle(featureRequest, stack ? { manualStack: stack } : undefined)
+                    this.logActivity('cycle', `startCycle ${result.success ? 'OK' : 'FAILED'}: ${featureRequest.substring(0, 60)}`, result.success ? 'ok' : 'fail')
+                    this.sendJson(res, { ...result, state: this.engine.getState() }); return
+                }
+
+                if (url === "/api/cycle/abort" && req.method === "POST") {
+                    if (!this.engine) { this.sendJson(res, { error: "Engine not initialized" }, 503); return }
+                    const result = (this.engine as any).abort ? await (this.engine as any).abort() : { success: true }
+                    this.logActivity('cycle', `abort cycle`, 'warn')
+                    this.sendJson(res, { ...result, state: this.engine.getState() }); return
+                }
+
+                if (url === "/api/autonomy" && req.method === "POST") {
+                    if (!this.engine) { this.sendJson(res, { error: "Engine not initialized" }, 503); return }
+                    const { level } = JSON.parse(await this.readBody(req) || "{}")
+                    if (!["manual", "semi-auto", "full-auto"].includes(level)) {
+                        this.sendJson(res, { error: "level must be manual | semi-auto | full-auto" }, 400); return
+                    }
+                    this.engine.setAutonomy(level)
+                    this.logActivity('autonomy', `Autonomy set to ${level}`, 'info')
+                    this.sendJson(res, { success: true, level, state: this.engine.getState() }); return
+                }
+
+                if (url === "/api/mode/switch" && req.method === "POST") {
+                    const { mode } = JSON.parse(await this.readBody(req) || "{}")
+                    const allowed = ["director", "planner", "executor", "workflow-master", "code", "ask", "architect", "debug"]
+                    if (!mode || !allowed.includes(mode)) {
+                        this.sendJson(res, { error: `mode must be one of: ${allowed.join(", ")}` }, 400); return
+                    }
+                    if (!this.provider.setMode) {
+                        this.sendJson(res, { error: "provider.setMode unavailable" }, 503); return
+                    }
+                    try {
+                        await this.provider.setMode(mode)
+                        ;(globalThis as any).__rooWorkflowMode = mode
+                        this.logActivity('mode', `Mode switched to ${mode}`, 'ok')
+                        this.sendJson(res, { success: true, mode }); return
+                    } catch (err: any) {
+                        this.sendJson(res, { success: false, error: err?.message || String(err) }, 500); return
+                    }
+                }
+
+                if (url === "/api/mode/current" && req.method === "GET") {
+                    const mode = (globalThis as any).__rooWorkflowMode || (this.engine ? this.engine.getState().currentMode : null) || null
+                    this.sendJson(res, { mode }); return
                 }
 
                 if (url.startsWith("/api/next") || url.startsWith("/api/reset") || url.startsWith("/api/undo") || url.startsWith("/api/resume")) {

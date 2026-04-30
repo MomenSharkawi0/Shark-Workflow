@@ -456,6 +456,41 @@ app.post('/api/undo', async (req, res) => { res.json(await runOrchestrator('-Und
 app.post('/api/resume', async (req, res) => { res.json(await runOrchestrator('-Resume')); });
 app.post('/api/plan', async (req, res) => { res.json(await runOrchestrator('-Plan')); });
 
+// ============================================================================
+// REST API — Workflow control proxied to the WorkflowBridge inside VS Code
+// (cycle start/abort, mode switch, autonomy level, current mode lookup).
+// These are no-ops if the Roo Code extension isn't running.
+// ============================================================================
+
+const BRIDGE_BASE = 'http://127.0.0.1:3001';
+
+async function proxyToBridge(req, res, bridgePath, opts = {}) {
+  try {
+    const fetchOpts = {
+      method: opts.method || 'POST',
+      headers: { 'Content-Type': 'application/json' },
+    };
+    if (fetchOpts.method !== 'GET' && req.body && Object.keys(req.body).length) {
+      fetchOpts.body = JSON.stringify(req.body);
+    }
+    const r = await fetch(`${BRIDGE_BASE}${bridgePath}`, fetchOpts);
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) return res.status(r.status).json(data);
+    res.json(data);
+  } catch (err) {
+    res.status(503).json({
+      error: 'Bridge unreachable. Start the Roo Code extension in VS Code.',
+      detail: err.message
+    });
+  }
+}
+
+app.post('/api/cycle/start',  (req, res) => proxyToBridge(req, res, '/api/cycle/start'));
+app.post('/api/cycle/abort',  (req, res) => proxyToBridge(req, res, '/api/cycle/abort'));
+app.post('/api/autonomy',     (req, res) => proxyToBridge(req, res, '/api/autonomy'));
+app.post('/api/mode/switch',  (req, res) => proxyToBridge(req, res, '/api/mode/switch'));
+app.get('/api/mode/current',  (req, res) => proxyToBridge(req, res, '/api/mode/current', { method: 'GET' }));
+
 // A11: coordinate autopilot writes with the orchestrator's lock so we don't clobber
 // an in-flight `-Next` transition. Same lock semantics as orchestrator.ps1 (60s stale).
 function acquireLockOrFail() {

@@ -14,7 +14,7 @@ All custom code is isolated in `src/workflow/` to minimise upstream merge confli
 | `src/workflow/ContextInjector.ts` | Injects per-mode context files into the system prompt (e.g. Director gets DNA + lessons; Executor gets `PLAN_APPROVED.md`). |
 | `src/workflow/GateValidator.ts` | Registers `roo-code.checkWorkflowGate` command; pops a webview on gate failure. |
 | `src/workflow/WorkflowEngine.ts` | In-process AI orchestrator with three autonomy levels and LLM-as-Judge evaluation. |
-| `src/workflow/WorkflowBridge.ts` | HTTP server on `:3001` exposing `/api/status`, `/api/events` (SSE), `/api/progress`, `/api/chat/*`. |
+| `src/workflow/WorkflowBridge.ts` | HTTP server on `:3001`. Endpoints: `/bridge/ping`, `/api/status`, `/api/events` (SSE), `/api/progress`, `/api/chat/history`, `/api/chat/send` (smart-routes new feature requests through `engine.startCycle`), `/api/cycle/start`, `/api/cycle/abort`, `/api/autonomy`, `/api/mode/switch`, `/api/mode/current`, plus orchestrator passthroughs. |
 | `src/workflow/StackDetector.ts` | Auto-detects languages/frameworks/databases via file signatures. |
 | `src/workflow/DashboardPanel.ts` | VS Code webview hosting the dashboard via iframe. |
 | `MODIFICATIONS.md` | This file. |
