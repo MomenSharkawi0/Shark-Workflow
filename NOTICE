@@ -1,0 +1,35 @@
+Roo Workflow
+Copyright 2026 The Roo Workflow contributors.
+
+This product includes software developed by:
+  - Roo Veterinary, Inc. and the Roo Code contributors
+    (https://github.com/RooCodeInc/Roo-Code), licensed under the
+    Apache License, Version 2.0.
+
+The directory `roo-code-fork/` contains a derivative work of Roo Code.
+Modifications introduced by this project are limited to:
+
+  1. A new directory `roo-code-fork/src/workflow/` containing all custom
+     workflow integration code (WorkflowWatcher, WorkflowStatusBar,
+     ContextInjector, GateValidator, WorkflowEngine, WorkflowBridge,
+     StackDetector, DashboardPanel, and an `index.ts` entry point).
+
+  2. A single import line and a 9-line activation try/catch block added
+     to `roo-code-fork/src/extension.ts` (search for
+     "activateWorkflowIntegration").
+
+  3. Two model-detection entries added to
+     `roo-code-fork/src/api/providers/deepseek.ts` and minor parameter
+     handling edits in `roo-code-fork/src/api/transform/model-params.ts`.
+
+  4. Version bump to 4.0.0 in `roo-code-fork/package.json` to distinguish
+     the modified build.
+
+All other files in `roo-code-fork/` are unmodified from upstream Roo Code
+at the time of fork. See `roo-code-fork/MODIFICATIONS.md` for a more
+detailed change log.
+
+The orchestrator engine, dashboard, init scripts, and documentation in
+the repository root and outside `roo-code-fork/` are © the Roo Workflow
+contributors and are made available under the same Apache License,
+Version 2.0, for compatibility with the fork.

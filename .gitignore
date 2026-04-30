@@ -1,0 +1,64 @@
+# =============================================================================
+# Workflow runtime state (project-specific, generated at runtime)
+# =============================================================================
+WORKFLOW/
+plans/
+*.log
+*.lock
+
+# =============================================================================
+# Node / build artifacts
+# =============================================================================
+**/node_modules/
+**/.turbo/
+**/.next/
+**/dist/
+**/out/
+**/build/
+**/.cache/
+**/coverage/
+**/*.tsbuildinfo
+
+# =============================================================================
+# VS Code extension build outputs (rebuild with `pnpm install:vsix` in fork)
+# =============================================================================
+roo-code-fork/bin/
+roo-code-fork/releases/
+roo-code-fork/src/dist/
+roo-code-fork/webview-ui/build/
+roo-code-fork/webview-ui/dist/
+roo-code-fork/apps/*/dist/
+roo-code-fork/apps/*/.next/
+roo-code-fork/apps/*/build/
+roo-code-fork/packages/*/dist/
+roo-code-fork/packages/*/build/
+*.vsix
+
+# Roo Code's own progress/state file (generated)
+roo-code-fork/progress.txt
+
+# =============================================================================
+# Editor / OS noise
+# =============================================================================
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.idea/
+.vscode/launch.json
+.vscode/.history/
+
+# =============================================================================
+# Secrets / local env
+# =============================================================================
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+
+# =============================================================================
+# Claude Code session state (project-specific)
+# =============================================================================
+.claude/
+memory/

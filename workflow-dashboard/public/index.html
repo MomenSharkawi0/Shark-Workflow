@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Workflow Command Center | Roo Code Orchestrator v5</title>
+  <meta name="description" content="Real-time workflow orchestration dashboard with SSE-powered live updates"/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="styles.css"/>
+</head>
+<body>
+
+  <!-- Header -->
+  <header class="header glass">
+    <div class="flex items-center gap-3">
+      <div class="header-logo">R</div>
+      <div>
+        <h1 class="header-title">Workflow Command Center</h1>
+        <p class="header-subtitle">Roo Code Orchestrator v5 — SSE Live</p>
+      </div>
+    </div>
+    <div class="flex items-center gap-2">
+      <div id="connectionDot" class="connection-dot disconnected"></div>
+      <span id="connectionLabel" class="label-sm" style="color:var(--accent-red)">Connecting...</span>
+    </div>
+  </header>
+
+  <main class="container main-content">
+
+    <!-- Blocked Alert -->
+    <div id="blockedAlert" class="hidden card-enter">
+      <div class="alert-blocked">
+        <div class="alert-icon">
+          <svg class="icon-lg" style="color:#f87171" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z"/></svg>
+        </div>
+        <div>
+          <h3 style="color:#f87171;font-weight:700;font-size:0.875rem">🚨 WORKFLOW BLOCKED</h3>
+          <p id="blockedReason" style="color:rgba(252,165,165,0.8);font-size:0.875rem;margin-top:0.25rem">—</p>
+          <p style="color:rgba(248,113,113,0.6);font-size:0.75rem;margin-top:0.5rem">Use <code style="background:rgba(239,68,68,0.1);padding:0 0.25rem;border-radius:0.25rem">-Undo</code> to rollback or <code style="background:rgba(239,68,68,0.1);padding:0 0.25rem;border-radius:0.25rem">-Resume</code> to retry.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Workflow Pipeline Stepper -->
+    <section class="card-enter">
+      <div class="gradient-border">
+        <div class="gradient-border-inner">
+          <h2 class="section-label">Workflow Pipeline</h2>
+          <div id="stepper" class="stepper"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Metrics Row -->
+    <section class="grid-5 card-enter" style="animation-delay:0.1s">
+      <div class="glass-card">
+        <p class="label-sm">Current State</p>
+        <p id="metricState" class="metric-value metric-value-sm">—</p>
+        <div id="statusBadge" class="status-badge status-badge-progress mt-2">—</div>
+      </div>
+      <div class="glass-card">
+        <p class="label-sm">Cycle Start</p>
+        <p id="metricCycleStart" class="text-lg font-bold text-white">—</p>
+        <p id="metricElapsed" class="text-xs text-dim mt-1">—</p>
+      </div>
+      <div class="glass-card">
+        <p class="label-sm">Transitions</p>
+        <p id="metricTransitions" class="metric-value">0</p>
+      </div>
+      <div class="glass-card">
+        <p class="label-sm">Retries</p>
+        <p id="metricRetries" class="metric-value">0</p>
+      </div>
+      <!-- Progress Estimation Ring -->
+      <div class="glass-card progress-ring-card">
+        <p class="label-sm">Progress</p>
+        <div class="progress-ring-wrapper">
+          <svg class="progress-ring" viewBox="0 0 80 80">
+            <circle class="progress-ring-bg" cx="40" cy="40" r="34"/>
+            <circle id="progressArc" class="progress-ring-fill" cx="40" cy="40" r="34"
+                    stroke-dasharray="213.6" stroke-dashoffset="213.6"/>
+          </svg>
+          <div class="progress-ring-text">
+            <span id="progressPercent" class="progress-ring-value">0%</span>
+          </div>
+        </div>
+        <p id="progressEta" class="text-xs text-dim mt-1" style="text-align:center">—</p>
+        <p id="progressConfidence" class="text-xs text-dim" style="text-align:center;font-size:0.625rem">—</p>
+      </div>
+    </section>
+
+    <!-- Actions + Prompt -->
+    <section class="grid-2 card-enter" style="animation-delay:0.2s">
+      <!-- Action Controls -->
+      <div class="glass-card relative">
+        <div class="flex items-center justify-between mb-5">
+          <h2 class="section-label" style="margin-bottom:0">Action Controls</h2>
+          <div class="autopilot-wrapper">
+            <span class="label-sm">Autopilot</span>
+            <label style="position:relative;display:inline-flex;align-items:center;cursor:pointer">
+              <input type="checkbox" id="autopilotToggle" class="sr-only" onchange="toggleAutopilot()">
+              <div id="autopilotTrack" class="toggle-track">
+                <div class="toggle-thumb"></div>
+              </div>
+            </label>
+          </div>
+        </div>
+        <div class="btn-group">
+          <button id="btnNext" onclick="triggerNext()" class="btn btn-primary flex-1">
+            <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6"/></svg>
+            <span>Next Phase</span>
+          </button>
+          <button id="btnResume" onclick="triggerResume()" class="btn btn-success">
+            <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+            <span>Resume</span>
+          </button>
+          <button id="btnUndo" onclick="triggerUndo()" class="btn btn-amber">
+            <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h10a5 5 0 015 5v2M3 10l4-4m-4 4l4 4"/></svg>
+            <span>Undo</span>
+          </button>
+          <button id="btnReset" onclick="triggerReset()" class="btn btn-danger">
+            <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+            <span>Reset</span>
+          </button>
+        </div>
+        <p id="actionFeedback" class="text-xs text-dim mt-3 text-center">Ready for commands</p>
+      </div>
+
+      <!-- Agent Chat Interface -->
+      <div class="glass-card chat-panel">
+        <div class="flex items-center justify-between mb-2">
+          <h2 class="section-label" style="margin-bottom:0">Agent Chat</h2>
+          <div class="flex items-center gap-2">
+            <div id="bridgeStatus" class="bridge-indicator disconnected">
+              <div class="bridge-dot"></div>
+              <span class="label-sm">Bridge</span>
+            </div>
+            <button onclick="clearChatHistory()" class="action-btn" style="padding:0.25rem 0.5rem;font-size:0.625rem" title="Clear chat history">
+              <span>Clear</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Prompt Suggestion -->
+        <div class="prompt-suggestion">
+          <div class="prompt-header text-xs text-dim">Suggested prompt for current phase:</div>
+          <div id="promptArea" class="prompt-area font-mono">Loading...</div>
+          <div class="flex gap-2 mt-2">
+            <button id="sendPromptBtn" onclick="sendPromptToAgent()" class="action-btn" style="flex:2;background:var(--accent-indigo);color:white;border:none">
+              <svg class="icon-sm" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/></svg>
+              <span>Send to Agent</span>
+            </button>
+            <button id="copyBtn" onclick="copyPrompt()" class="action-btn" style="flex:1">
+              <svg class="icon-sm" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"/></svg>
+              <span>Copy</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Chat Messages -->
+        <div id="chatMessages" class="chat-messages">
+          <div class="chat-empty">
+            <svg class="icon-lg" style="color:var(--text-dim);margin-bottom:0.5rem" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
+            <p>No messages yet. Send a prompt or type a message below.</p>
+          </div>
+        </div>
+
+        <!-- Chat Input -->
+        <div class="chat-input-bar">
+          <input type="text" id="chatInput" class="chat-input" placeholder="Type a message to the agent..." onkeypress="if(event.key === 'Enter') sendChatMessage()">
+          <button id="sendChatBtn" onclick="sendChatMessage()" class="chat-send-btn">
+            <svg class="icon-sm" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/></svg>
+          </button>
+        </div>
+        <p id="actionFeedback" class="text-xs text-dim mt-1 text-center">Ready</p>
+      </div>
+    </section>
+
+    <!-- Activity Feed + Cycle Metrics -->
+    <section class="grid-2 card-enter" style="animation-delay:0.25s">
+      <!-- Activity Feed -->
+      <div class="glass-card" style="padding:0;overflow:hidden">
+        <div class="panel-header">
+          <div class="flex items-center gap-2">
+            <div class="pulse-dot"></div>
+            <span class="section-label" style="margin-bottom:0">Live Activity Feed</span>
+          </div>
+          <span class="label-sm" style="color:var(--text-dim)">SSE Stream</span>
+        </div>
+        <div id="activityFeed" class="activity-feed">
+          <p class="feed-placeholder text-xs text-dim" style="padding:1rem;text-align:center">Waiting for events...</p>
+        </div>
+      </div>
+
+      <!-- Cycle Analytics -->
+      <div class="glass-card">
+        <h2 class="section-label">Cycle Analytics</h2>
+        <div id="metricsSummary" class="metrics-summary">
+          <div class="metric-mini">
+            <span class="label-sm">Cycles</span>
+            <span class="metric-mini-value">0</span>
+          </div>
+          <div class="metric-mini">
+            <span class="label-sm">Avg Duration</span>
+            <span class="metric-mini-value">0m</span>
+          </div>
+          <div class="metric-mini">
+            <span class="label-sm">Total Transitions</span>
+            <span class="metric-mini-value">0</span>
+          </div>
+          <div class="metric-mini">
+            <span class="label-sm">Escalations</span>
+            <span class="metric-mini-value">0</span>
+          </div>
+        </div>
+
+        <h2 class="section-label mt-3">Quality Gate History</h2>
+        <div id="gatesLog" class="gates-log">
+          <p class="text-xs text-dim">No gate results yet.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Live Console -->
+    <section class="card-enter" style="animation-delay:0.3s">
+      <div class="glass-card" style="padding:0;overflow:hidden">
+        <div class="console-header">
+          <div class="flex gap-1-5">
+            <div class="console-dot console-dot-red"></div>
+            <div class="console-dot console-dot-yellow"></div>
+            <div class="console-dot console-dot-green"></div>
+          </div>
+          <span class="label-sm" style="margin-left:0.5rem">Live Console — orchestrator.ps1</span>
+          <button onclick="clearConsole()" style="margin-left:auto;font-size:0.75rem;color:var(--text-dim);background:none;border:none;cursor:pointer">Clear</button>
+        </div>
+        <div id="console" class="console-output">
+          <div style="color:#475569">$ Awaiting commands...</div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
