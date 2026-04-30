@@ -408,6 +408,122 @@ suite('09. 5-strike enforcement', () => {
 })
 
 // =============================================================================
+// 10. Project Setup Wizard
+// =============================================================================
+suite('10. Project Setup Wizard', () => {
+  test('GET /api/wizard/options returns the full schema', async () => {
+    const r = await http(`${dashboard.base}/api/wizard/options`)
+    assert.status(r, 200)
+    assert.ok(Array.isArray(r.body.projectTypes) && r.body.projectTypes.length > 0, 'projectTypes')
+    assert.ok(r.body.backend && Array.isArray(r.body.backend.frameworks), 'backend.frameworks')
+    assert.ok(r.body.backend.extras && Array.isArray(r.body.backend.extras.laravel), 'laravel extras (Filament)')
+    // Filament v3 + v4 must be present
+    const filamentLabels = r.body.backend.extras.laravel.map(e => e.label).join('|')
+    assert.contains(filamentLabels, 'Filament v3')
+    assert.contains(filamentLabels, 'Filament v4')
+    // Flutter version list present
+    assert.ok(Array.isArray(r.body.mobile.frameworkVersions.flutter), 'flutter versions')
+  })
+
+  test('POST /api/wizard/start without summary → 400', async () => {
+    const r = await http(`${dashboard.base}/api/wizard/start`, { method: 'POST', body: { } })
+    assert.status(r, 400)
+  })
+
+  test('POST /api/wizard/start with full config → 503 when bridge offline, AND echoes generated FEATURE_REQUEST', async () => {
+    const cfg = {
+      summary: 'An HR platform with employee profiles, geo-fenced clock-in, and admin payroll export.',
+      projectName: 'acme-hr',
+      projectType: 'Web application (full-stack)',
+      backend: { framework: 'Laravel (PHP)', frameworkVersion: '11.x', languageVersion: '8.3', language: 'php', extras: ['Filament v3 (admin panel)', 'Sanctum (API auth)'] },
+      frontend: { framework: 'Filament UI', uiLibrary: 'Tailwind CSS', stateManagement: '(none — local state only)' },
+      mobile: { framework: 'Flutter (Dart)', frameworkVersion: '3.27', extras: ['Riverpod (state management)'] },
+      database: { primary: 'PostgreSQL', cache: 'Redis', orm: 'Eloquent (Laravel)' },
+      auth: 'Session-based (cookies)',
+      infrastructure: { ci: 'GitHub Actions', containerization: 'Docker Compose (multi-service)', hosting: 'Self-hosted / VPS' },
+      testing: { unit: 'Pest', e2e: 'Playwright' },
+      constraints: 'Spanish + English UI. GDPR compliant.',
+      successCriteria: '- Employee can clock in within geo-fence\n- Admin can export payroll CSV',
+      autonomy: 'semi-auto',
+      dataModel: '- users(id, email, role)\n- employees(id, user_id, department_id)',
+    }
+    const r = await http(`${dashboard.base}/api/wizard/start`, { method: 'POST', body: cfg })
+    assert.status(r, 503)
+    // Even on bridge-offline, the generated request body should be returned for preview
+    assert.isType(r.body.generatedFeatureRequest, 'string')
+    assert.contains(r.body.generatedFeatureRequest, 'Filament v3')
+    assert.contains(r.body.generatedFeatureRequest, 'Flutter (Dart) 3.27')
+    assert.contains(r.body.generatedFeatureRequest, 'PostgreSQL')
+    assert.contains(r.body.generatedFeatureRequest, 'GDPR')
+    assert.contains(r.body.generatedFeatureRequest, 'Stack & decisions')
+  })
+})
+
+// =============================================================================
+// 11. Doctor / Recovery
+// =============================================================================
+suite('11. Doctor / Recovery', () => {
+  test('GET /api/doctor returns issues array when state is COMPLETE', async () => {
+    // Force COMPLETE-ish state by writing the status file manually
+    writeFile(workspace.dir, 'WORKFLOW/ORCHESTRATION_STATUS.json', JSON.stringify({
+      schemaVersion: 1, currentState: 'COMPLETE', previousState: 'ARCHIVE',
+      phase: '', cycleId: 'test1234', cycleStart: '2026-05-01T00:00:00Z',
+      lastTransition: '2026-05-01T00:01:00Z', transitionCount: 7, retryCount: 0,
+      nextAction: '', nextMode: '', status: 'COMPLETE', blockedReason: '',
+      autopilot: false, parallelTracks: false
+    }, null, 2))
+    const r = await http(`${dashboard.base}/api/doctor`)
+    assert.status(r, 200)
+    assert.ok(Array.isArray(r.body.issues))
+    assert.greaterOrEqual(r.body.issues.length, 1)
+    // Should suggest reset as a fix when COMPLETE
+    const completeIssue = r.body.issues.find(i => i.title.includes('No issues') || i.title.includes('complete'))
+    assert.ok(completeIssue, 'should report no-issue state when COMPLETE')
+  })
+
+  test('GET /api/doctor flags BLOCKED state with high severity', async () => {
+    writeFile(workspace.dir, 'WORKFLOW/ORCHESTRATION_STATUS.json', JSON.stringify({
+      schemaVersion: 1, currentState: 'EXECUTION', previousState: 'PLAN_REVIEW',
+      phase: '', cycleId: 'block123', cycleStart: '2026-05-01T00:00:00Z',
+      lastTransition: '2026-05-01T00:01:00Z', transitionCount: 5, retryCount: 5,
+      nextAction: 'See ESCALATION.md', nextMode: 'Executor',
+      status: 'BLOCKED', blockedReason: 'Five-strike limit hit',
+      autopilot: false, parallelTracks: false
+    }, null, 2))
+    const r = await http(`${dashboard.base}/api/doctor`)
+    assert.status(r, 200)
+    const fatal = r.body.issues.find(i => i.severity === 'fatal')
+    assert.ok(fatal, 'should have a fatal-severity issue when status=BLOCKED')
+    assert.contains(fatal.title, 'BLOCKED')
+    assert.greaterOrEqual(fatal.fixes.length, 1)
+  })
+
+  test('GET /api/doctor surfaces "awaiting deliverable" when in PHASE_PLANNING and PHASE_PLAN.md missing', async () => {
+    writeFile(workspace.dir, 'WORKFLOW/ORCHESTRATION_STATUS.json', JSON.stringify({
+      schemaVersion: 1, currentState: 'PHASE_PLANNING', previousState: 'INIT',
+      phase: '', cycleId: 'wait1234', cycleStart: '2026-05-01T00:00:00Z',
+      lastTransition: '2026-05-01T00:01:00Z', transitionCount: 1, retryCount: 0,
+      nextAction: 'Director writes PHASE_PLAN.md', nextMode: 'Director',
+      status: 'IN_PROGRESS', blockedReason: '',
+      autopilot: false, parallelTracks: false
+    }, null, 2))
+    // Make sure the file is missing (it might exist from earlier tests)
+    try { (await import('node:fs')).rmSync((await import('node:path')).join(workspace.dir, 'WORKFLOW', 'ACTIVE', 'PHASE_PLAN.md')) } catch {}
+    const r = await http(`${dashboard.base}/api/doctor`)
+    assert.status(r, 200)
+    const waiting = r.body.issues.find(i => i.title.includes('Awaiting'))
+    assert.ok(waiting, 'should suggest awaiting deliverable')
+    assert.contains(waiting.message, 'PHASE_PLAN.md')
+  })
+
+  test('DELETE /api/doctor/lock returns success even when no lock present', async () => {
+    const r = await http(`${dashboard.base}/api/doctor/lock`, { method: 'DELETE' })
+    assert.status(r, 200)
+    assert.equal(r.body.success, true)
+  })
+})
+
+// =============================================================================
 // Teardown
 // =============================================================================
 suite('99. Teardown', () => {

@@ -742,6 +742,346 @@ setInterval(refreshCurrentMode, 3000);
 window.addEventListener('DOMContentLoaded', () => setTimeout(refreshCurrentMode, 500));
 
 // ============================================================================
+// PROJECT SETUP WIZARD
+// ============================================================================
+
+let WIZARD_OPTIONS = null;
+
+function $(id) { return document.getElementById(id); }
+
+/** Toggle expand/collapse of the wizard panel */
+function toggleWizard() {
+  const body = $('wizardBody');
+  const hint = $('wizardToggleHint');
+  if (!body) return;
+  const open = body.style.display !== 'none';
+  body.style.display = open ? 'none' : 'block';
+  hint.textContent = open
+    ? '▶ click to expand — pick stack, framework versions (Filament v3/v4, Flutter version, …), DB, auth, CI/CD'
+    : '▼ click to collapse';
+  if (!open && !WIZARD_OPTIONS) loadWizardOptions();
+}
+
+/** Populate a <select> with [{id,label}] options */
+function fillSelect(el, items, opts = {}) {
+  if (!el || !Array.isArray(items)) return;
+  el.innerHTML = '';
+  if (opts.placeholder) {
+    const o = document.createElement('option');
+    o.value = ''; o.textContent = opts.placeholder; o.disabled = true;
+    if (!opts.selected) o.selected = true;
+    el.appendChild(o);
+  }
+  for (const it of items) {
+    const o = document.createElement('option');
+    o.value = it.id; o.textContent = it.label;
+    if (opts.selected && it.id === opts.selected) o.selected = true;
+    el.appendChild(o);
+  }
+  el.disabled = false;
+}
+
+/** Fill a non-id'd dropdown from a string array */
+function fillSelectFromStrings(el, items, opts = {}) {
+  if (!el) return;
+  el.innerHTML = '';
+  if (opts.placeholder) {
+    const o = document.createElement('option');
+    o.value = ''; o.textContent = opts.placeholder; o.disabled = true; o.selected = true;
+    el.appendChild(o);
+  }
+  for (const s of items || []) {
+    const o = document.createElement('option');
+    o.value = s; o.textContent = s;
+    el.appendChild(o);
+  }
+  el.disabled = !items || items.length === 0;
+}
+
+async function loadWizardOptions() {
+  try {
+    const res = await fetch('/api/wizard/options');
+    if (!res.ok) throw new Error('options fetch ' + res.status);
+    WIZARD_OPTIONS = await res.json();
+    populateWizardStaticOptions();
+  } catch (err) {
+    console.error('wizard options load failed:', err);
+    setWizFeedback('Could not load wizard options: ' + err.message, 'fail');
+  }
+}
+
+function populateWizardStaticOptions() {
+  const o = WIZARD_OPTIONS;
+  fillSelect($('wizProjectType'), o.projectTypes, { placeholder: 'Choose project type…' });
+  fillSelect($('wizBackendFramework'), o.backend.frameworks, { selected: 'none' });
+  fillSelect($('wizFrontendFramework'), o.frontend.frameworks, { selected: 'none' });
+  fillSelect($('wizFrontendUiLibrary'), o.frontend.uiLibraries, { selected: 'tailwind' });
+  fillSelect($('wizFrontendStateManagement'), o.frontend.stateManagement, { selected: 'none' });
+  fillSelect($('wizMobileFramework'), o.mobile.frameworks, { selected: 'none' });
+  fillSelect($('wizDbPrimary'), o.database.primary, { selected: 'postgresql' });
+  fillSelect($('wizDbCache'), o.database.cache, { selected: 'none' });
+  fillSelect($('wizAuth'), o.auth, { selected: 'session' });
+  fillSelect($('wizCi'), o.infrastructure.ci, { selected: 'github-actions' });
+  fillSelect($('wizContainerization'), o.infrastructure.containerization, { selected: 'docker-compose' });
+  fillSelect($('wizHosting'), o.infrastructure.hosting, { selected: 'self-hosted' });
+  fillSelect($('wizTestE2e'), o.testing.e2e, { selected: 'playwright' });
+
+  // Trigger dependent fields
+  onBackendFrameworkChange();
+  onMobileFrameworkChange();
+}
+
+function onBackendFrameworkChange() {
+  const fw = $('wizBackendFramework').value;
+  const o = WIZARD_OPTIONS;
+  if (!o) return;
+
+  // Framework versions
+  fillSelectFromStrings($('wizBackendFrameworkVersion'), o.backend.frameworkVersions[fw], { placeholder: 'n/a' });
+
+  // Language version (driven by the framework's language)
+  const fwMeta = o.backend.frameworks.find(f => f.id === fw);
+  const lang = fwMeta && fwMeta.language;
+  fillSelectFromStrings($('wizBackendLanguageVersion'), lang ? o.backend.languageVersions[lang] : [], { placeholder: lang ? `Pick ${lang} version` : 'n/a' });
+
+  // Extras
+  const extras = (o.backend.extras && o.backend.extras[fw]) || [];
+  const extrasRow = $('wizBackendExtrasRow');
+  if (extras.length) {
+    fillSelect($('wizBackendExtras'), extras);
+    extrasRow.style.display = 'block';
+  } else {
+    extrasRow.style.display = 'none';
+  }
+
+  // ORM choices come from the language
+  const ormItems = lang && o.database.orm[lang] ? o.database.orm[lang] : [];
+  fillSelect($('wizDbOrm'), ormItems.length ? ormItems : [{ id: 'none', label: '(no ORM applicable)' }]);
+
+  // Unit testing per language
+  const unitItems = lang && o.testing.unit[lang] ? o.testing.unit[lang] : [{ id: 'none', label: '(none)' }];
+  fillSelect($('wizTestUnit'), unitItems);
+}
+
+function onMobileFrameworkChange() {
+  const fw = $('wizMobileFramework').value;
+  const o = WIZARD_OPTIONS;
+  if (!o) return;
+  fillSelectFromStrings($('wizMobileFrameworkVersion'), o.mobile.frameworkVersions[fw], { placeholder: fw === 'none' ? 'n/a' : 'Pick version' });
+  const extras = (o.mobile.extras && o.mobile.extras[fw]) || [];
+  const extrasRow = $('wizMobileExtrasRow');
+  if (extras.length) {
+    fillSelect($('wizMobileExtras'), extras);
+    extrasRow.style.display = 'block';
+  } else {
+    extrasRow.style.display = 'none';
+  }
+}
+
+function readMultiSelect(el) {
+  if (!el) return [];
+  return Array.from(el.selectedOptions).map(o => o.value).filter(Boolean);
+}
+
+function buildWizardConfig() {
+  const o = WIZARD_OPTIONS;
+  const backendFw = $('wizBackendFramework').value;
+  const fwMeta = o.backend.frameworks.find(f => f.id === backendFw);
+  const lang = fwMeta && fwMeta.language;
+  return {
+    projectName: $('wizProjectName').value.trim(),
+    projectType: $('wizProjectType').selectedOptions[0]?.text || '',
+    summary: $('wizSummary').value.trim(),
+    backend: {
+      framework: $('wizBackendFramework').selectedOptions[0]?.text || backendFw,
+      frameworkVersion: $('wizBackendFrameworkVersion').value || '',
+      language: lang || '',
+      languageVersion: $('wizBackendLanguageVersion').value || '',
+      extras: readMultiSelect($('wizBackendExtras')).map(id => o.backend.extras[backendFw]?.find(e => e.id === id)?.label || id),
+    },
+    frontend: {
+      framework: $('wizFrontendFramework').selectedOptions[0]?.text || '',
+      uiLibrary: $('wizFrontendUiLibrary').selectedOptions[0]?.text || '',
+      stateManagement: $('wizFrontendStateManagement').selectedOptions[0]?.text || '',
+    },
+    mobile: {
+      framework: $('wizMobileFramework').selectedOptions[0]?.text || '',
+      frameworkVersion: $('wizMobileFrameworkVersion').value || '',
+      extras: readMultiSelect($('wizMobileExtras')).map(id => o.mobile.extras[$('wizMobileFramework').value]?.find(e => e.id === id)?.label || id),
+    },
+    database: {
+      primary: $('wizDbPrimary').selectedOptions[0]?.text || '',
+      cache: $('wizDbCache').selectedOptions[0]?.text || '',
+      orm: $('wizDbOrm').selectedOptions[0]?.text || '',
+    },
+    auth: $('wizAuth').selectedOptions[0]?.text || '',
+    infrastructure: {
+      ci: $('wizCi').selectedOptions[0]?.text || '',
+      containerization: $('wizContainerization').selectedOptions[0]?.text || '',
+      hosting: $('wizHosting').selectedOptions[0]?.text || '',
+    },
+    testing: {
+      unit: $('wizTestUnit').selectedOptions[0]?.text || '',
+      e2e: $('wizTestE2e').selectedOptions[0]?.text || '',
+    },
+    constraints: $('wizConstraints').value.trim(),
+    successCriteria: $('wizSuccess').value.trim(),
+    autonomy: $('wizAutonomy').value || 'semi-auto',
+    dataModel: $('wizDataModel').value.trim(),
+  };
+}
+
+function setWizFeedback(msg, kind) {
+  const el = $('wizFeedback');
+  if (!el) return;
+  el.textContent = msg;
+  el.style.color = kind === 'ok' ? 'var(--accent-emerald, #10b981)'
+                  : kind === 'fail' ? 'var(--accent-red, #ef4444)' : '';
+}
+
+async function previewWizardRequest() {
+  if (!WIZARD_OPTIONS) await loadWizardOptions();
+  const cfg = buildWizardConfig();
+  if (!cfg.summary) { setWizFeedback('Add a summary first.', 'fail'); return; }
+  // Just send to the backend builder via /api/wizard/start with a "dryRun" hint —
+  // simpler: build it client-side from a small mirror. But we delegate to backend
+  // for the canonical version. So: post and request to NOT actually start? We don't
+  // have that flag. Easiest: call /api/wizard/start; if bridge offline (503), the
+  // server still echoes the generated FEATURE_REQUEST in the response body.
+  setWizFeedback('Building preview…', '');
+  try {
+    const res = await fetch('/api/wizard/start', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(cfg)
+    });
+    const data = await res.json();
+    const md = data.generatedFeatureRequest || data.error || JSON.stringify(data, null, 2);
+    const pre = $('wizPreview');
+    pre.style.display = 'block';
+    pre.textContent = md;
+    setWizFeedback(res.ok ? '✓ Cycle started. Preview shown below.' : 'Preview shown (cycle did not start: ' + (data.error || res.status) + ').', res.ok ? 'ok' : 'fail');
+  } catch (err) {
+    setWizFeedback('Bridge unreachable: ' + err.message, 'fail');
+  }
+}
+
+async function startWizardCycle() {
+  if (!WIZARD_OPTIONS) await loadWizardOptions();
+  const cfg = buildWizardConfig();
+  if (!cfg.summary) { setWizFeedback('Please write a summary in section 1.', 'fail'); $('wizSummary').focus(); return; }
+  if (cfg.summary.length < 15) { setWizFeedback('Summary is too short — be more specific (15+ chars).', 'fail'); $('wizSummary').focus(); return; }
+
+  const btn = $('wizStartBtn');
+  btn.classList.add('btn-loading');
+  setWizFeedback('Starting cycle…', '');
+  try {
+    const res = await fetch('/api/wizard/start', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(cfg)
+    });
+    const data = await res.json();
+    if (res.ok && data.success) {
+      setWizFeedback('🚀 Cycle started — switching to Director and beginning PHASE_PLANNING. Preview below shows the FEATURE_REQUEST the Director will use.', 'ok');
+      const pre = $('wizPreview'); pre.style.display = 'block'; pre.textContent = data.generatedFeatureRequest || '';
+      setTimeout(refreshCurrentMode, 500);
+      setTimeout(refreshDoctor, 800);
+    } else {
+      setWizFeedback('❌ ' + (data.error || 'Failed to start cycle (is the Roo Code extension running?)'), 'fail');
+    }
+  } catch (err) {
+    setWizFeedback('❌ Bridge unreachable: ' + err.message, 'fail');
+  } finally {
+    btn.classList.remove('btn-loading');
+  }
+}
+
+// ============================================================================
+// DOCTOR / RECOVERY PANEL
+// ============================================================================
+
+async function refreshDoctor() {
+  const container = $('doctorIssues');
+  if (!container) return;
+  try {
+    const res = await fetch('/api/doctor');
+    if (!res.ok) {
+      container.innerHTML = `<p class="text-xs text-dim">Doctor unavailable: HTTP ${res.status}</p>`;
+      return;
+    }
+    const data = await res.json();
+    renderDoctorIssues(data.issues || []);
+  } catch (err) {
+    container.innerHTML = `<p class="text-xs text-dim">Doctor unavailable: ${err.message}</p>`;
+  }
+}
+
+function renderDoctorIssues(issues) {
+  const container = $('doctorIssues');
+  if (!issues.length) { container.innerHTML = '<p class="text-xs text-dim">All clear.</p>'; return; }
+  container.innerHTML = issues.map((iss, idx) => {
+    const fixesHtml = (iss.fixes || []).map((fix, fIdx) =>
+      `<button class="doctor-fix-btn ${fix.action === 'shell' ? 'shell' : fix.action === 'note' ? 'note' : ''}" onclick="applyDoctorFix(${idx}, ${fIdx})">${escapeHtml(fix.label)}</button>`
+    ).join('');
+    return `
+      <div class="doctor-issue severity-${iss.severity}">
+        <div class="doctor-issue-title">${escapeHtml(iss.title)}</div>
+        <div class="doctor-issue-message">${escapeHtml(iss.message)}</div>
+        ${fixesHtml ? `<div class="doctor-fixes">${fixesHtml}</div>` : ''}
+      </div>`;
+  }).join('');
+  // Cache for the click handler
+  window.__doctorIssues = issues;
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+}
+
+async function applyDoctorFix(issueIdx, fixIdx) {
+  const issues = window.__doctorIssues || [];
+  const fix = issues[issueIdx]?.fixes?.[fixIdx];
+  if (!fix) return;
+
+  if (fix.action === 'shell') {
+    navigator.clipboard.writeText(fix.command).then(
+      () => alert(`Copied to clipboard:\n\n${fix.command}\n\nRun it in your project's PowerShell terminal.`),
+      () => alert(`Run this in your project's PowerShell terminal:\n\n${fix.command}`)
+    );
+    return;
+  }
+  if (fix.action === 'note') {
+    alert(fix.target || fix.label);
+    return;
+  }
+  if (fix.action === 'open') {
+    alert(`Open this file in VS Code:\n\n${fix.target}`);
+    return;
+  }
+  if (fix.action === 'http') {
+    if (fix.confirm && !confirm(fix.confirm)) return;
+    try {
+      const res = await fetch(fix.url, {
+        method: fix.method || 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: fix.body ? JSON.stringify(fix.body) : undefined,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setTimeout(refreshDoctor, 400);
+      } else {
+        alert(`Action failed (HTTP ${res.status}): ${data.error || 'unknown error'}`);
+      }
+    } catch (err) {
+      alert(`Action failed: ${err.message}`);
+    }
+  }
+}
+
+// Initial doctor load + periodic refresh
+window.addEventListener('DOMContentLoaded', () => setTimeout(refreshDoctor, 700));
+setInterval(refreshDoctor, 5000);
+
+// ============================================================================
 // QUALITY GATES (fallback polling — gate data not yet in SSE)
 // ============================================================================
 

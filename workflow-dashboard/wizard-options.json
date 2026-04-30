@@ -1,0 +1,270 @@
+{
+  "version": 1,
+  "projectTypes": [
+    { "id": "web-app",       "label": "Web application (full-stack)" },
+    { "id": "spa",           "label": "Single-page web app (frontend only)" },
+    { "id": "api",           "label": "API / backend service" },
+    { "id": "mobile",        "label": "Mobile app" },
+    { "id": "monorepo",      "label": "Monorepo (web + mobile + API)" },
+    { "id": "cli",           "label": "Command-line tool" },
+    { "id": "library",       "label": "Library / package" },
+    { "id": "desktop",       "label": "Desktop app" },
+    { "id": "static-site",   "label": "Static site / docs" }
+  ],
+
+  "backend": {
+    "frameworks": [
+      { "id": "none",          "label": "(none — pure frontend / static)", "language": null },
+      { "id": "laravel",       "label": "Laravel (PHP)", "language": "php" },
+      { "id": "django",        "label": "Django (Python)", "language": "python" },
+      { "id": "fastapi",       "label": "FastAPI (Python)", "language": "python" },
+      { "id": "flask",         "label": "Flask (Python)", "language": "python" },
+      { "id": "express",       "label": "Express (Node.js)", "language": "node" },
+      { "id": "nestjs",        "label": "NestJS (Node.js / TypeScript)", "language": "node" },
+      { "id": "fastify",       "label": "Fastify (Node.js)", "language": "node" },
+      { "id": "rails",         "label": "Ruby on Rails", "language": "ruby" },
+      { "id": "spring-boot",   "label": "Spring Boot (Java)", "language": "java" },
+      { "id": "aspnet",        "label": "ASP.NET Core (C#)", "language": "dotnet" },
+      { "id": "go-fiber",      "label": "Fiber (Go)", "language": "go" },
+      { "id": "go-echo",       "label": "Echo (Go)", "language": "go" },
+      { "id": "actix",         "label": "Actix-web (Rust)", "language": "rust" }
+    ],
+    "languageVersions": {
+      "php":    ["8.4", "8.3", "8.2", "8.1"],
+      "python": ["3.13", "3.12", "3.11", "3.10"],
+      "node":   ["22 LTS", "20 LTS", "18 LTS"],
+      "ruby":   ["3.3", "3.2", "3.1"],
+      "java":   ["21 LTS", "17 LTS"],
+      "dotnet": ["9", "8 LTS"],
+      "go":     ["1.23", "1.22", "1.21"],
+      "rust":   ["stable", "1.83", "1.82"]
+    },
+    "frameworkVersions": {
+      "laravel":     ["11.x", "10.x"],
+      "django":      ["5.1", "5.0", "4.2 LTS"],
+      "fastapi":     ["latest"],
+      "flask":       ["3.x"],
+      "express":     ["5.x", "4.x"],
+      "nestjs":      ["10.x"],
+      "fastify":     ["5.x", "4.x"],
+      "rails":       ["7.2", "7.1"],
+      "spring-boot": ["3.4.x", "3.3.x"],
+      "aspnet":      ["9.0", "8.0 LTS"],
+      "go-fiber":    ["v3", "v2"],
+      "go-echo":     ["v4"],
+      "actix":       ["4.x"]
+    },
+    "extras": {
+      "laravel": [
+        { "id": "filament-v3", "label": "Filament v3 (admin panel)" },
+        { "id": "filament-v4", "label": "Filament v4 (admin panel, beta)" },
+        { "id": "livewire-v3", "label": "Livewire v3" },
+        { "id": "inertia",     "label": "Inertia.js" },
+        { "id": "horizon",     "label": "Laravel Horizon (queues)" },
+        { "id": "octane",      "label": "Laravel Octane (high-performance)" },
+        { "id": "sanctum",     "label": "Sanctum (API auth)" },
+        { "id": "passport",    "label": "Passport (OAuth2)" },
+        { "id": "telescope",   "label": "Telescope (debugging)" }
+      ],
+      "django": [
+        { "id": "drf",         "label": "Django REST Framework" },
+        { "id": "channels",    "label": "Channels (WebSockets)" },
+        { "id": "celery",      "label": "Celery (background tasks)" }
+      ],
+      "fastapi": [
+        { "id": "sqlmodel",    "label": "SQLModel" },
+        { "id": "celery",      "label": "Celery" },
+        { "id": "rq",          "label": "RQ (Redis Queue)" }
+      ],
+      "express": [
+        { "id": "passport",    "label": "Passport.js" },
+        { "id": "socket-io",   "label": "Socket.IO" }
+      ],
+      "nestjs": [
+        { "id": "graphql",     "label": "GraphQL (Apollo)" },
+        { "id": "microservices", "label": "Microservices" },
+        { "id": "swagger",     "label": "Swagger / OpenAPI" }
+      ],
+      "rails": [
+        { "id": "hotwire",     "label": "Hotwire (Turbo + Stimulus)" },
+        { "id": "sidekiq",     "label": "Sidekiq (background jobs)" }
+      ]
+    }
+  },
+
+  "frontend": {
+    "frameworks": [
+      { "id": "none",          "label": "(none — backend only / API only)" },
+      { "id": "react-vite",    "label": "React + Vite" },
+      { "id": "nextjs",        "label": "Next.js (App Router)" },
+      { "id": "nextjs-pages",  "label": "Next.js (Pages Router)" },
+      { "id": "remix",         "label": "Remix" },
+      { "id": "vue-vite",      "label": "Vue 3 + Vite" },
+      { "id": "nuxt",          "label": "Nuxt 3" },
+      { "id": "sveltekit",     "label": "SvelteKit" },
+      { "id": "solid",         "label": "SolidJS" },
+      { "id": "astro",         "label": "Astro" },
+      { "id": "qwik",          "label": "Qwik" },
+      { "id": "angular",       "label": "Angular" },
+      { "id": "htmx",          "label": "HTMX (server-rendered)" },
+      { "id": "vanilla",       "label": "Plain HTML/CSS/JS (no framework)" }
+    ],
+    "uiLibraries": [
+      { "id": "tailwind",      "label": "Tailwind CSS" },
+      { "id": "shadcn",        "label": "shadcn/ui (Tailwind + Radix)" },
+      { "id": "mui",           "label": "Material UI (MUI)" },
+      { "id": "chakra",        "label": "Chakra UI" },
+      { "id": "mantine",       "label": "Mantine" },
+      { "id": "antd",          "label": "Ant Design" },
+      { "id": "bootstrap",     "label": "Bootstrap 5" },
+      { "id": "primereact",    "label": "PrimeReact / PrimeVue" },
+      { "id": "headlessui",    "label": "Headless UI" },
+      { "id": "vanilla-css",   "label": "Vanilla CSS / no UI library" }
+    ],
+    "stateManagement": [
+      { "id": "none",          "label": "(none — local state only)" },
+      { "id": "redux-toolkit", "label": "Redux Toolkit" },
+      { "id": "zustand",       "label": "Zustand" },
+      { "id": "jotai",         "label": "Jotai" },
+      { "id": "tanstack-query","label": "TanStack Query (server state)" },
+      { "id": "swr",           "label": "SWR" },
+      { "id": "pinia",         "label": "Pinia (Vue)" },
+      { "id": "context-api",   "label": "React Context only" }
+    ]
+  },
+
+  "mobile": {
+    "frameworks": [
+      { "id": "none",            "label": "(no mobile)" },
+      { "id": "flutter",         "label": "Flutter (Dart)" },
+      { "id": "react-native",    "label": "React Native" },
+      { "id": "expo",            "label": "Expo (React Native)" },
+      { "id": "swift-ios",       "label": "Native iOS (Swift / SwiftUI)" },
+      { "id": "kotlin-android",  "label": "Native Android (Kotlin)" },
+      { "id": "kmm",             "label": "Kotlin Multiplatform Mobile" },
+      { "id": "capacitor",       "label": "Capacitor (web-to-native wrapper)" },
+      { "id": "ionic",           "label": "Ionic" },
+      { "id": "nativescript",    "label": "NativeScript" }
+    ],
+    "frameworkVersions": {
+      "flutter":      ["3.27", "3.24", "3.22", "3.19"],
+      "react-native": ["0.76", "0.75", "0.74"],
+      "expo":         ["SDK 52", "SDK 51", "SDK 50"]
+    },
+    "extras": {
+      "flutter": [
+        { "id": "riverpod",  "label": "Riverpod (state management)" },
+        { "id": "bloc",      "label": "BLoC pattern" },
+        { "id": "provider",  "label": "Provider" },
+        { "id": "go-router", "label": "GoRouter" },
+        { "id": "dio",       "label": "Dio (HTTP client)" },
+        { "id": "isar",      "label": "Isar (local DB)" }
+      ],
+      "react-native": [
+        { "id": "redux-toolkit", "label": "Redux Toolkit" },
+        { "id": "zustand",       "label": "Zustand" },
+        { "id": "react-query",   "label": "TanStack Query" },
+        { "id": "navigation-v6", "label": "React Navigation v6" }
+      ],
+      "expo": [
+        { "id": "expo-router", "label": "Expo Router" },
+        { "id": "eas-build",   "label": "EAS Build" }
+      ]
+    }
+  },
+
+  "database": {
+    "primary": [
+      { "id": "none",       "label": "(no database)" },
+      { "id": "postgresql", "label": "PostgreSQL" },
+      { "id": "mysql",      "label": "MySQL" },
+      { "id": "mariadb",    "label": "MariaDB" },
+      { "id": "sqlite",     "label": "SQLite" },
+      { "id": "mongodb",    "label": "MongoDB" },
+      { "id": "firestore",  "label": "Firestore" },
+      { "id": "supabase",   "label": "Supabase (Postgres-as-a-service)" },
+      { "id": "planetscale","label": "PlanetScale (MySQL)" },
+      { "id": "dynamodb",   "label": "DynamoDB" }
+    ],
+    "cache": [
+      { "id": "none",   "label": "(no cache)" },
+      { "id": "redis",  "label": "Redis" },
+      { "id": "memcached", "label": "Memcached" },
+      { "id": "in-memory", "label": "In-process (file or memory)" }
+    ],
+    "orm": {
+      "php":    [{ "id": "eloquent", "label": "Eloquent (Laravel)" }, { "id": "doctrine", "label": "Doctrine" }, { "id": "raw", "label": "Raw SQL / query builder" }],
+      "python": [{ "id": "django-orm", "label": "Django ORM" }, { "id": "sqlalchemy", "label": "SQLAlchemy" }, { "id": "sqlmodel", "label": "SQLModel" }, { "id": "tortoise", "label": "Tortoise ORM" }, { "id": "raw", "label": "Raw SQL" }],
+      "node":   [{ "id": "prisma", "label": "Prisma" }, { "id": "drizzle", "label": "Drizzle" }, { "id": "typeorm", "label": "TypeORM" }, { "id": "knex", "label": "Knex.js" }, { "id": "mongoose", "label": "Mongoose (MongoDB)" }, { "id": "sequelize", "label": "Sequelize" }, { "id": "raw", "label": "Raw SQL" }],
+      "ruby":   [{ "id": "active-record", "label": "ActiveRecord" }],
+      "java":   [{ "id": "jpa-hibernate", "label": "JPA / Hibernate" }, { "id": "jdbi", "label": "JDBI" }],
+      "dotnet": [{ "id": "ef-core", "label": "Entity Framework Core" }, { "id": "dapper", "label": "Dapper" }],
+      "go":     [{ "id": "gorm", "label": "GORM" }, { "id": "sqlx", "label": "sqlx" }, { "id": "raw", "label": "database/sql" }],
+      "rust":   [{ "id": "diesel", "label": "Diesel" }, { "id": "sqlx", "label": "sqlx" }, { "id": "sea-orm", "label": "SeaORM" }]
+    }
+  },
+
+  "auth": [
+    { "id": "none",       "label": "(no auth)" },
+    { "id": "session",    "label": "Session-based (cookies)" },
+    { "id": "jwt",        "label": "JWT tokens" },
+    { "id": "oauth2",     "label": "OAuth2 / OIDC" },
+    { "id": "passwordless","label": "Passwordless (magic link)" },
+    { "id": "social",     "label": "Social login (Google / GitHub / Apple)" },
+    { "id": "supabase-auth", "label": "Supabase Auth" },
+    { "id": "clerk",      "label": "Clerk" },
+    { "id": "auth0",      "label": "Auth0" },
+    { "id": "firebase-auth", "label": "Firebase Auth" }
+  ],
+
+  "infrastructure": {
+    "ci": [
+      { "id": "none",            "label": "(no CI yet)" },
+      { "id": "github-actions",  "label": "GitHub Actions" },
+      { "id": "gitlab-ci",       "label": "GitLab CI" },
+      { "id": "circleci",        "label": "CircleCI" },
+      { "id": "jenkins",         "label": "Jenkins" }
+    ],
+    "containerization": [
+      { "id": "none",            "label": "(none)" },
+      { "id": "docker",          "label": "Dockerfile only" },
+      { "id": "docker-compose",  "label": "Docker Compose (multi-service)" },
+      { "id": "kubernetes",      "label": "Kubernetes (manifests)" },
+      { "id": "devcontainer",    "label": "VS Code devcontainer" }
+    ],
+    "hosting": [
+      { "id": "self-hosted",     "label": "Self-hosted / VPS" },
+      { "id": "vercel",          "label": "Vercel" },
+      { "id": "netlify",         "label": "Netlify" },
+      { "id": "render",          "label": "Render" },
+      { "id": "railway",         "label": "Railway" },
+      { "id": "fly-io",          "label": "Fly.io" },
+      { "id": "aws",             "label": "AWS" },
+      { "id": "gcp",             "label": "Google Cloud" },
+      { "id": "azure",           "label": "Azure" },
+      { "id": "cloudflare",      "label": "Cloudflare Pages / Workers" },
+      { "id": "supabase-hosting","label": "Supabase" },
+      { "id": "shared-hosting",  "label": "Shared / cPanel hosting" }
+    ]
+  },
+
+  "testing": {
+    "unit": {
+      "php":    [{ "id": "pest", "label": "Pest" }, { "id": "phpunit", "label": "PHPUnit" }],
+      "python": [{ "id": "pytest", "label": "pytest" }, { "id": "unittest", "label": "unittest (stdlib)" }],
+      "node":   [{ "id": "vitest", "label": "Vitest" }, { "id": "jest", "label": "Jest" }, { "id": "node-test", "label": "node:test (built-in)" }],
+      "ruby":   [{ "id": "rspec", "label": "RSpec" }, { "id": "minitest", "label": "Minitest" }],
+      "java":   [{ "id": "junit", "label": "JUnit 5" }],
+      "dotnet": [{ "id": "xunit", "label": "xUnit" }, { "id": "nunit", "label": "NUnit" }],
+      "go":     [{ "id": "testing", "label": "testing (stdlib)" }, { "id": "testify", "label": "testify" }],
+      "rust":   [{ "id": "cargo-test", "label": "cargo test (built-in)" }]
+    },
+    "e2e": [
+      { "id": "none",       "label": "(no E2E tests)" },
+      { "id": "playwright", "label": "Playwright" },
+      { "id": "cypress",    "label": "Cypress" },
+      { "id": "puppeteer",  "label": "Puppeteer" },
+      { "id": "selenium",   "label": "Selenium" }
+    ]
+  }
+}

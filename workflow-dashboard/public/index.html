@@ -118,6 +118,182 @@
       </div>
     </section>
 
+    <!-- NEW: Project Setup Wizard (collapsible) -->
+    <section class="card-enter" style="animation-delay:0.07s">
+      <div class="glass-card" id="wizardCard">
+        <div class="flex items-center justify-between mb-3" style="cursor:pointer" onclick="toggleWizard()">
+          <h2 class="section-label" style="margin-bottom:0">🧙 Project Setup Wizard</h2>
+          <span class="text-xs text-dim" id="wizardToggleHint">▶ click to expand — pick stack, framework versions (Filament v3/v4, Flutter version, …), DB, auth, CI/CD</span>
+        </div>
+        <div id="wizardBody" style="display:none">
+          <p class="text-xs text-dim" style="margin-bottom:0.75rem">
+            For new projects. Lock in every decision up front (stack, versions, database, auth, CI). The wizard generates a structured
+            <code>FEATURE_REQUEST.md</code> the Director must respect when planning.
+          </p>
+
+          <!-- Section 1: Project basics -->
+          <div class="wiz-section">
+            <h3 class="wiz-section-title">1. Project basics</h3>
+            <div class="wiz-grid-2">
+              <label class="wiz-label">Project name (optional)
+                <input type="text" id="wizProjectName" class="wiz-input" placeholder="e.g. acme-hr-platform">
+              </label>
+              <label class="wiz-label">Project type
+                <select id="wizProjectType" class="wiz-input"></select>
+              </label>
+            </div>
+            <label class="wiz-label">Summary (one or two sentences — what are we building?)
+              <textarea id="wizSummary" class="wiz-input" rows="2" placeholder="e.g. An HR platform with employee profiles, attendance via geo-fenced clock-in, and an admin dashboard."></textarea>
+            </label>
+          </div>
+
+          <!-- Section 2: Backend -->
+          <div class="wiz-section">
+            <h3 class="wiz-section-title">2. Backend</h3>
+            <div class="wiz-grid-3">
+              <label class="wiz-label">Framework
+                <select id="wizBackendFramework" class="wiz-input" onchange="onBackendFrameworkChange()"></select>
+              </label>
+              <label class="wiz-label">Framework version
+                <select id="wizBackendFrameworkVersion" class="wiz-input" disabled></select>
+              </label>
+              <label class="wiz-label">Language version
+                <select id="wizBackendLanguageVersion" class="wiz-input" disabled></select>
+              </label>
+            </div>
+            <div id="wizBackendExtrasRow" style="display:none">
+              <label class="wiz-label">Extras (Filament version, Livewire, etc. — multi-select)
+                <select id="wizBackendExtras" class="wiz-input" multiple size="4"></select>
+              </label>
+            </div>
+          </div>
+
+          <!-- Section 3: Frontend -->
+          <div class="wiz-section">
+            <h3 class="wiz-section-title">3. Frontend (web)</h3>
+            <div class="wiz-grid-3">
+              <label class="wiz-label">Framework
+                <select id="wizFrontendFramework" class="wiz-input"></select>
+              </label>
+              <label class="wiz-label">UI library
+                <select id="wizFrontendUiLibrary" class="wiz-input"></select>
+              </label>
+              <label class="wiz-label">State management
+                <select id="wizFrontendStateManagement" class="wiz-input"></select>
+              </label>
+            </div>
+          </div>
+
+          <!-- Section 4: Mobile -->
+          <div class="wiz-section">
+            <h3 class="wiz-section-title">4. Mobile</h3>
+            <div class="wiz-grid-3">
+              <label class="wiz-label">Framework
+                <select id="wizMobileFramework" class="wiz-input" onchange="onMobileFrameworkChange()"></select>
+              </label>
+              <label class="wiz-label">Framework version
+                <select id="wizMobileFrameworkVersion" class="wiz-input" disabled></select>
+              </label>
+              <div></div>
+            </div>
+            <div id="wizMobileExtrasRow" style="display:none">
+              <label class="wiz-label">Mobile extras (state, navigation, etc.)
+                <select id="wizMobileExtras" class="wiz-input" multiple size="4"></select>
+              </label>
+            </div>
+          </div>
+
+          <!-- Section 5: Database -->
+          <div class="wiz-section">
+            <h3 class="wiz-section-title">5. Data layer</h3>
+            <div class="wiz-grid-3">
+              <label class="wiz-label">Primary database
+                <select id="wizDbPrimary" class="wiz-input"></select>
+              </label>
+              <label class="wiz-label">Cache layer
+                <select id="wizDbCache" class="wiz-input"></select>
+              </label>
+              <label class="wiz-label">ORM / data access
+                <select id="wizDbOrm" class="wiz-input"></select>
+              </label>
+            </div>
+            <label class="wiz-label">Data model / entities (free-form — list the tables/collections you'll need)
+              <textarea id="wizDataModel" class="wiz-input" rows="3" placeholder="e.g.&#10;- users (id, email, name, role, created_at)&#10;- employees (id, user_id, department_id, hire_date, salary)&#10;- departments (id, name, manager_id)&#10;- attendance_records (id, employee_id, clock_in, clock_out, location)"></textarea>
+            </label>
+          </div>
+
+          <!-- Section 6: Auth + Infra -->
+          <div class="wiz-section">
+            <h3 class="wiz-section-title">6. Auth, infra & testing</h3>
+            <div class="wiz-grid-3">
+              <label class="wiz-label">Authentication
+                <select id="wizAuth" class="wiz-input"></select>
+              </label>
+              <label class="wiz-label">CI / CD
+                <select id="wizCi" class="wiz-input"></select>
+              </label>
+              <label class="wiz-label">Containerization
+                <select id="wizContainerization" class="wiz-input"></select>
+              </label>
+            </div>
+            <div class="wiz-grid-3">
+              <label class="wiz-label">Hosting target
+                <select id="wizHosting" class="wiz-input"></select>
+              </label>
+              <label class="wiz-label">Unit testing
+                <select id="wizTestUnit" class="wiz-input"></select>
+              </label>
+              <label class="wiz-label">E2E testing
+                <select id="wizTestE2e" class="wiz-input"></select>
+              </label>
+            </div>
+          </div>
+
+          <!-- Section 7: Constraints + success criteria + autonomy -->
+          <div class="wiz-section">
+            <h3 class="wiz-section-title">7. Constraints & success</h3>
+            <label class="wiz-label">Constraints / requirements (optional)
+              <textarea id="wizConstraints" class="wiz-input" rows="2" placeholder="e.g. Must run on shared cPanel hosting. Spanish + English UI. GDPR-compliant. No paid third-party services."></textarea>
+            </label>
+            <label class="wiz-label">Success criteria (optional — leave blank for sensible defaults)
+              <textarea id="wizSuccess" class="wiz-input" rows="2" placeholder="e.g.&#10;- Employee can clock in/out within 50m geo-fence&#10;- Admin can export payroll CSV&#10;- All endpoints have integration tests"></textarea>
+            </label>
+            <div class="wiz-grid-2">
+              <label class="wiz-label">Autonomy level
+                <select id="wizAutonomy" class="wiz-input">
+                  <option value="manual">Manual (you click Next at every step)</option>
+                  <option value="semi-auto" selected>Semi-auto (auto-prompts the agent)</option>
+                  <option value="full-auto">Full autopilot</option>
+                </select>
+              </label>
+              <div></div>
+            </div>
+          </div>
+
+          <div style="display:flex;gap:0.75rem;align-items:center;margin-top:0.5rem">
+            <button id="wizStartBtn" onclick="startWizardCycle()" class="btn btn-primary">
+              <span>🚀 Start Workflow with this Setup</span>
+            </button>
+            <button onclick="previewWizardRequest()" class="btn mode-btn" type="button">Preview FEATURE_REQUEST.md</button>
+          </div>
+          <p id="wizFeedback" class="text-xs text-dim mt-2" style="min-height:1em"></p>
+          <pre id="wizPreview" style="display:none;background:#020617;color:#cbd5e1;padding:0.75rem;border-radius:0.5rem;font-size:0.75rem;max-height:300px;overflow:auto;margin-top:0.5rem;white-space:pre-wrap"></pre>
+        </div>
+      </div>
+    </section>
+
+    <!-- NEW: Doctor / Recovery panel -->
+    <section class="card-enter" style="animation-delay:0.08s">
+      <div class="glass-card" id="doctorCard">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="section-label" style="margin-bottom:0">🩺 Workflow Doctor</h2>
+          <button class="btn mode-btn" type="button" onclick="refreshDoctor()" style="padding:0.4rem 0.8rem;font-size:0.75rem">↻ Re-diagnose</button>
+        </div>
+        <p class="text-xs text-dim" style="margin-bottom:0.5rem">Diagnoses the current state and tells you exactly which command or button to use to recover.</p>
+        <div id="doctorIssues" style="display:flex;flex-direction:column;gap:0.5rem"></div>
+      </div>
+    </section>
+
     <!-- Metrics Row -->
     <section class="grid-5 card-enter" style="animation-delay:0.1s">
       <div class="glass-card">

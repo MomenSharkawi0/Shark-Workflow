@@ -269,6 +269,132 @@ body {
 }
 #stackHintSelect:hover, #autonomySelect:hover { border-color: rgba(99, 102, 241, 0.5); }
 
+/* ----------------------------------------------------------------------------
+   Project Setup Wizard
+   ---------------------------------------------------------------------------- */
+.wiz-section {
+  border: 1px solid rgba(99, 102, 241, 0.12);
+  border-radius: 0.6rem;
+  padding: 0.85rem 1rem;
+  margin-bottom: 0.8rem;
+  background: rgba(15, 23, 42, 0.35);
+}
+.wiz-section-title {
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #a78bfa;
+  margin-bottom: 0.6rem;
+}
+.wiz-grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.65rem;
+  margin-bottom: 0.55rem;
+}
+.wiz-grid-3 {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 0.65rem;
+  margin-bottom: 0.55rem;
+}
+@media (max-width: 760px) {
+  .wiz-grid-2, .wiz-grid-3 { grid-template-columns: 1fr; }
+}
+.wiz-label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.72rem;
+  color: var(--text-dim, #94a3b8);
+  font-weight: 500;
+  margin-bottom: 0.35rem;
+}
+.wiz-input {
+  width: 100%;
+  background: #0f172a;
+  color: #e2e8f0;
+  border: 1px solid rgba(99, 102, 241, 0.22);
+  border-radius: 0.4rem;
+  padding: 0.45rem 0.6rem;
+  font-family: inherit;
+  font-size: 0.82rem;
+  line-height: 1.35;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.wiz-input:focus {
+  outline: none;
+  border-color: rgba(99, 102, 241, 0.6);
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.10);
+}
+.wiz-input:hover:not(:disabled) { border-color: rgba(99, 102, 241, 0.45); }
+.wiz-input:disabled { opacity: 0.5; cursor: not-allowed; background: #0a0f1a; }
+select.wiz-input { cursor: pointer; }
+select.wiz-input[multiple] { min-height: 5rem; }
+textarea.wiz-input { resize: vertical; }
+.wiz-input::placeholder { color: rgba(148, 163, 184, 0.45); }
+
+#wizardCard .section-label { user-select: none; }
+#wizardToggleHint { font-weight: 500; }
+
+/* ----------------------------------------------------------------------------
+   Doctor / Recovery panel
+   ---------------------------------------------------------------------------- */
+.doctor-issue {
+  border-left: 3px solid rgba(99, 102, 241, 0.5);
+  background: rgba(15, 23, 42, 0.45);
+  border-radius: 0.45rem;
+  padding: 0.65rem 0.85rem;
+}
+.doctor-issue.severity-info  { border-left-color: rgba(99, 102, 241, 0.6); }
+.doctor-issue.severity-warn  { border-left-color: rgba(245, 158, 11, 0.85); background: rgba(245, 158, 11, 0.06); }
+.doctor-issue.severity-fatal { border-left-color: rgba(239, 68, 68, 0.9);  background: rgba(239, 68, 68, 0.07); }
+.doctor-issue-title {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #e2e8f0;
+  margin-bottom: 0.2rem;
+}
+.doctor-issue.severity-warn  .doctor-issue-title { color: #fbbf24; }
+.doctor-issue.severity-fatal .doctor-issue-title { color: #fca5a5; }
+.doctor-issue-message {
+  font-size: 0.78rem;
+  color: var(--text-dim, #94a3b8);
+  margin-bottom: 0.45rem;
+  line-height: 1.4;
+}
+.doctor-fixes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+.doctor-fix-btn {
+  background: rgba(99, 102, 241, 0.14);
+  color: #c7d2fe;
+  border: 1px solid rgba(99, 102, 241, 0.35);
+  padding: 0.32rem 0.7rem;
+  border-radius: 0.35rem;
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.1s ease;
+  font-family: inherit;
+}
+.doctor-fix-btn:hover { background: rgba(99, 102, 241, 0.28); transform: translateY(-1px); }
+.doctor-fix-btn.shell {
+  background: rgba(15, 23, 42, 0.6);
+  color: #94a3b8;
+  border-color: rgba(148, 163, 184, 0.3);
+  font-family: 'JetBrains Mono', monospace;
+}
+.doctor-fix-btn.note {
+  background: transparent;
+  color: var(--text-dim, #94a3b8);
+  border: 1px dashed rgba(148, 163, 184, 0.3);
+  cursor: default;
+}
+.doctor-fix-btn.note:hover { background: transparent; transform: none; }
+
 /* ============================================================================
    Metrics
    ============================================================================ */
