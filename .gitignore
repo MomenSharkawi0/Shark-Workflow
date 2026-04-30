@@ -7,14 +7,14 @@ plans/
 *.lock
 
 # =============================================================================
-# Node / build artifacts
+# Node / build artifacts (NOTE: do NOT use a bare `**/build/` — it would
+# eat the legitimate workspace package `roo-code-fork/packages/build/`)
 # =============================================================================
 **/node_modules/
 **/.turbo/
 **/.next/
 **/dist/
 **/out/
-**/build/
 **/.cache/
 **/coverage/
 **/*.tsbuildinfo
@@ -29,9 +29,13 @@ roo-code-fork/webview-ui/build/
 roo-code-fork/webview-ui/dist/
 roo-code-fork/apps/*/dist/
 roo-code-fork/apps/*/.next/
-roo-code-fork/apps/*/build/
+roo-code-fork/apps/vscode-nightly/build/
+roo-code-fork/apps/vscode-e2e/build/
+roo-code-fork/apps/web-roo-code/build/
+roo-code-fork/apps/web-evals/build/
+# packages/build/ is a workspace package — DO NOT exclude it.
+# packages/*/dist/ is a build output — exclude it.
 roo-code-fork/packages/*/dist/
-roo-code-fork/packages/*/build/
 *.vsix
 
 # Roo Code's own progress/state file (generated)

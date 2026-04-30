@@ -52,7 +52,17 @@ Two thinking-model variants added to the model detection map:
 
 ### `package.json`
 
-`"version"` bumped to `4.0.0` to distinguish from upstream releases.
+- `"version"` bumped to `4.0.0` to distinguish from upstream releases.
+- `clean` script changed from `rimraf` to `node scripts/clean-safe.mjs` to survive
+  the Windows-specific `EPERM unlink .turbo/daemon/*.log` failure that occurs
+  when the turbo daemon still holds its log file open. Same semantics — recursive
+  delete with `force: true` — but with `maxRetries: 10` and EPERM/EBUSY tolerance.
+
+### `scripts/clean-safe.mjs` (new)
+
+Tiny Node wrapper that replaces `rimraf` in the workspace `clean` script.
+Cross-platform; ignores EPERM/EBUSY/ENOENT on individual targets, fatal on
+anything else.
 
 ## Building the VSIX
 
