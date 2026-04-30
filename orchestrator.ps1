@@ -1159,8 +1159,13 @@ function Invoke-StateTransition {
     Write-Host "From: $currentState" -ForegroundColor Gray
     Write-Host "To:   $nextState" -ForegroundColor Yellow
 
-    if ($nextConfig.NextMode) {
-        Write-Host "`nNEXT MODE: $($nextConfig.NextMode.ToUpper())" -ForegroundColor Green
+    # Display the mode that should ACT on the new state (its ActiveMode), NOT
+    # the legacy `NextMode` field which is the alternate-path mode used only
+    # when a review returns NEEDS_REVISION. Showing the wrong one (e.g.
+    # "PLANNER" right after entering PLAN_REVIEW) confuses agents into running
+    # `-Next` again instead of doing the Director's review work.
+    if ($nextConfig.ActiveMode) {
+        Write-Host "`nACTIVE MODE: $($nextConfig.ActiveMode.ToUpper())" -ForegroundColor Green
     }
     Write-Host "`nINSTRUCTION: $($nextConfig.Instruction)" -ForegroundColor White
 }
@@ -1540,7 +1545,7 @@ $complexity
         -TransitionCount 1 `
         -RetryCount 0 `
         -NextAction $StateConfigs["PHASE_PLANNING"].Instruction `
-        -NextMode $StateConfigs["PHASE_PLANNING"].NextMode `
+        -NextMode $StateConfigs["PHASE_PLANNING"].ActiveMode `
         -Status "IN_PROGRESS" `
         -Autopilot $false
 
@@ -1625,7 +1630,7 @@ function Invoke-UndoTransition {
             -TransitionCount $transitionCount `
             -RetryCount $statusData["Retry Count"] `
             -NextAction $prevConfig.Instruction `
-            -NextMode $prevConfig.NextMode `
+            -NextMode $prevConfig.ActiveMode `
             -Status "IN_PROGRESS"
 
         Write-Host "`n=== STATE ROLLBACK ===" -ForegroundColor Magenta
@@ -1662,7 +1667,7 @@ function Invoke-ResumeExecution {
             -TransitionCount ([int]$statusData["Transition Count"]) `
             -RetryCount 0 `
             -NextAction $config.Instruction `
-            -NextMode $config.NextMode `
+            -NextMode $config.ActiveMode `
             -Status "IN_PROGRESS"
 
         Write-Host "`n=== RESUME ===" -ForegroundColor Cyan
@@ -1818,7 +1823,7 @@ Plan injected successfully via -InjectPlan.
             -TransitionCount $transitionCount `
             -RetryCount 0 `
             -NextAction $nextConfig.Instruction `
-            -NextMode $nextConfig.NextMode `
+            -NextMode $nextConfig.ActiveMode `
             -Status "IN_PROGRESS"
 
         # Git commit for injection
