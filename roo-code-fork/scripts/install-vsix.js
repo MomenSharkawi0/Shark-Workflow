@@ -1,5 +1,7 @@
 const { execSync } = require("child_process")
 const fs = require("fs")
+const path = require("path")
+const os = require("os")
 const readline = require("readline")
 
 // detect "yes" flags
@@ -11,6 +13,74 @@ const isNightly = process.argv.includes("--nightly")
 // detect editor command from args or default to "code"
 const editorArg = process.argv.find((arg) => arg.startsWith("--editor="))
 const defaultEditor = editorArg ? editorArg.split("=")[1] : "code"
+
+/**
+ * Resolve a VS Code-family CLI to a callable command.
+ *
+ * On Windows, VS Code's `code` shim is often missing from PATH (it's only
+ * added when the user runs the in-app "Shell Command: Install 'code' command
+ * in PATH"). We try, in order:
+ *   1. The bare command from PATH.
+ *   2. Common Windows install locations (User + System installer + Insiders + Cursor).
+ *   3. macOS / Linux common locations.
+ *
+ * Returns a quoted absolute path (Windows-safe) or the bare command if it works.
+ */
+function resolveEditorCommand(name) {
+	// Quick check: is `<name> --version` callable from PATH?
+	try {
+		execSync(`${name} --version`, { stdio: "ignore" })
+		return name
+	} catch {
+		// fall through to filesystem search
+	}
+
+	const cmdName = process.platform === "win32" ? `${name}.cmd` : name
+	const candidates = []
+
+	if (process.platform === "win32") {
+		const userHome = os.homedir()
+		const programFiles = process.env["ProgramFiles"] || "C:\\Program Files"
+		const programFilesX86 = process.env["ProgramFiles(x86)"] || "C:\\Program Files (x86)"
+		const localAppData = process.env["LOCALAPPDATA"] || path.join(userHome, "AppData", "Local")
+
+		const winNameMap = {
+			code: ["Microsoft VS Code", "Code.exe", "bin/code.cmd"],
+			"code-insiders": ["Microsoft VS Code Insiders", "Code - Insiders.exe", "bin/code-insiders.cmd"],
+			cursor: ["cursor", "Cursor.exe", "resources/app/bin/cursor.cmd"],
+		}
+		const m = winNameMap[name]
+		if (m) {
+			const [folder, _exe, binRelative] = m
+			candidates.push(
+				path.join(localAppData, "Programs", folder, "bin", path.basename(binRelative)),
+				path.join(programFiles, folder, "bin", path.basename(binRelative)),
+				path.join(programFilesX86, folder, "bin", path.basename(binRelative)),
+			)
+		}
+	} else {
+		// macOS / Linux
+		candidates.push(
+			"/usr/local/bin/" + name,
+			"/usr/bin/" + name,
+			"/snap/bin/" + name,
+			"/Applications/Visual Studio Code.app/Contents/Resources/app/bin/" + name,
+		)
+	}
+
+	for (const candidate of candidates) {
+		if (fs.existsSync(candidate)) {
+			try {
+				execSync(`"${candidate}" --version`, { stdio: "ignore" })
+				return `"${candidate}"`
+			} catch {
+				// keep looking
+			}
+		}
+	}
+
+	return null
+}
 
 const rl = readline.createInterface({
 	input: process.stdin,
@@ -77,10 +147,25 @@ async function main() {
 			process.exit(0)
 		}
 
-		console.log(`\nProceeding with installation using '${editorCommand}' command...`)
+		console.log(`\nLocating '${editorCommand}' CLI...`)
+		const resolved = resolveEditorCommand(editorCommand)
+		if (!resolved) {
+			console.error(`\n❌ Could not find the '${editorCommand}' CLI on PATH or in any common install location.`)
+			console.error("   The VSIX itself was built successfully — install it manually:\n")
+			console.error(`     1. Open VS Code`)
+			console.error(`     2. Ctrl+Shift+P  →  "Extensions: Install from VSIX..."`)
+			console.error(`     3. Pick: ${path.resolve(vsixFileName)}`)
+			console.error(`     4. Ctrl+Shift+P  →  "Developer: Reload Window"\n`)
+			console.error(`   To make 'code' available on PATH for next time, run inside VS Code:`)
+			console.error(`     Ctrl+Shift+P  →  "Shell Command: Install 'code' command in PATH"\n`)
+			rl.close()
+			process.exit(1)
+		}
+		const editorBin = resolved
+		console.log(`Using: ${editorBin}`)
 
 		try {
-			execSync(`${editorCommand} --uninstall-extension ${extensionId}`, { stdio: "inherit" })
+			execSync(`${editorBin} --uninstall-extension ${extensionId}`, { stdio: "inherit" })
 		} catch (e) {
 			console.log("Extension not installed, skipping uninstall step")
 		}
@@ -92,7 +177,7 @@ async function main() {
 			process.exit(1)
 		}
 
-		execSync(`${editorCommand} --install-extension ${vsixFileName}`, { stdio: "inherit" })
+		execSync(`${editorBin} --install-extension ${vsixFileName}`, { stdio: "inherit" })
 
 		console.log(`\n✅ Successfully installed extension from ${vsixFileName}`)
 		console.log("\n⚠️  IMPORTANT: You need to restart VS Code for the changes to take effect.")

@@ -61,8 +61,20 @@ Two thinking-model variants added to the model detection map:
 ### `scripts/clean-safe.mjs` (new)
 
 Tiny Node wrapper that replaces `rimraf` in the workspace `clean` script.
-Cross-platform; ignores EPERM/EBUSY/ENOENT on individual targets, fatal on
-anything else.
+Stops the turbo daemon first (so its log handle is closed), then deletes
+with `fs.rmSync(maxRetries: 15)`. Tolerates EPERM/EBUSY/EACCES/ENOTEMPTY/
+ENOENT (anything else is fatal).
+
+### `scripts/install-vsix.js` (modified)
+
+Added a `resolveEditorCommand()` helper that finds the VS Code (or Cursor /
+Insiders) CLI even when it's not on PATH — searches the standard Windows
+install locations (`%LOCALAPPDATA%\Programs\Microsoft VS Code\bin\code.cmd`,
+Program Files, Cursor, Insiders) and macOS/Linux equivalents. When the CLI
+genuinely cannot be found, prints a clear instruction block telling the
+user how to install the VSIX manually via the GUI and how to add `code` to
+PATH for next time. Original install behavior is preserved when the CLI is
+on PATH.
 
 ## Building the VSIX
 
