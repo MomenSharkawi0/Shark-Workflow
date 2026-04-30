@@ -42,8 +42,8 @@ INIT  →  PHASE_PLANNING  →  DETAILED_PLANNING  →  PLAN_REVIEW  →  EXECUT
 ### 1. Clone and bootstrap
 
 ```powershell
-git clone https://github.com/<your-username>/roo-workflow.git
-cd roo-workflow
+git clone https://github.com/MomenSharkawi0/Shark-Workflow.git
+cd Shark-Workflow
 .\setup.ps1
 ```
 
