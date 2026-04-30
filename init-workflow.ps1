@@ -1476,11 +1476,17 @@ $PackageJsonContent = @'
 if (-not $SkipDashboard) {
     Write-Host "`n8. Setting up Command Center Dashboard..." -ForegroundColor Yellow
 
-    # A14 fix: prefer the live workflow-dashboard/ that ships next to init-workflow.ps1
-    # over the embedded literal copies (which lag behind real source). Only fall back to
-    # the embedded $ServerJsContent / $IndexHtmlContent when no live source is available.
+    # Three cases to consider:
+    #   1. Live dashboard exists at $scriptDir/workflow-dashboard AND target is a different
+    #      directory  -> copy from source to target.
+    #   2. Live dashboard exists AND target IS the same directory (the common case when
+    #      init-workflow.ps1 is run from inside the cloned repo) -> files are already in
+    #      place; do NOT overwrite (especially do NOT fall back to the stale embedded
+    #      copies, which would degrade the dashboard).
+    #   3. No live dashboard source anywhere -> fall back to embedded literals.
     $liveDashboardDir = Join-Path $scriptDir "workflow-dashboard"
-    $useLive = (Test-Path (Join-Path $liveDashboardDir "server.js")) -and ($liveDashboardDir -ne (Resolve-Path "workflow-dashboard" -ErrorAction SilentlyContinue))
+    $liveDashboardServerJs = Join-Path $liveDashboardDir "server.js"
+    $liveSourceExists = Test-Path $liveDashboardServerJs
 
     if (-not (Test-Path "workflow-dashboard/public")) {
         New-Item -ItemType Directory -Force -Path "workflow-dashboard/public" | Out-Null
@@ -1488,11 +1494,28 @@ if (-not $SkipDashboard) {
         Write-Host "  CREATED: workflow-dashboard/public/" -ForegroundColor Green
     }
 
-    if ($useLive) {
-        Write-Host "  Using live dashboard from $liveDashboardDir (skipping embedded copies)" -ForegroundColor Green
-        Copy-Item -Path (Join-Path $liveDashboardDir "server.js")     -Destination "workflow-dashboard/server.js"     -Force
-        Copy-Item -Path (Join-Path $liveDashboardDir "package.json")  -Destination "workflow-dashboard/package.json"  -Force
-        # Public assets: copy whatever ships (index.html, styles.css, app.js)
+    # Compare resolved paths to decide between case 1 and case 2.
+    $targetDashboardResolved = (Resolve-Path "workflow-dashboard" -ErrorAction SilentlyContinue)
+    $sameLocation = $false
+    if ($liveSourceExists -and $targetDashboardResolved) {
+        try {
+            $liveResolved = (Resolve-Path $liveDashboardDir).Path
+            $targetResolved = $targetDashboardResolved.Path
+            if ([string]::Equals($liveResolved.TrimEnd('\','/'), $targetResolved.TrimEnd('\','/'), [StringComparison]::OrdinalIgnoreCase)) {
+                $sameLocation = $true
+            }
+        } catch { }
+    }
+
+    if ($liveSourceExists -and $sameLocation) {
+        # Case 2: already in place — leave the live files alone.
+        Write-Host "  Live dashboard already in place at workflow-dashboard/ (no copy needed)." -ForegroundColor Green
+    }
+    elseif ($liveSourceExists) {
+        # Case 1: copy live source into target.
+        Write-Host "  Using live dashboard from $liveDashboardDir (overrides embedded copies)" -ForegroundColor Green
+        Copy-Item -Path $liveDashboardServerJs                          -Destination "workflow-dashboard/server.js"     -Force
+        Copy-Item -Path (Join-Path $liveDashboardDir "package.json")    -Destination "workflow-dashboard/package.json"  -Force
         $livePublic = Join-Path $liveDashboardDir "public"
         if (Test-Path $livePublic) {
             Copy-Item -Path (Join-Path $livePublic "*") -Destination "workflow-dashboard/public/" -Recurse -Force
@@ -1500,7 +1523,9 @@ if (-not $SkipDashboard) {
         Write-Host "  COPIED: workflow-dashboard/server.js" -ForegroundColor Green
         Write-Host "  COPIED: workflow-dashboard/public/" -ForegroundColor Green
         Write-Host "  COPIED: workflow-dashboard/package.json" -ForegroundColor Green
-    } else {
+    }
+    else {
+        # Case 3: no live source anywhere — embedded fallback.
         Write-Host "  No live dashboard source found; falling back to embedded copies." -ForegroundColor Yellow
         Set-Content -Path "workflow-dashboard/server.js" -Value $ServerJsContent -Encoding UTF8
         Write-Host "  CREATED: workflow-dashboard/server.js (embedded fallback)" -ForegroundColor Green
