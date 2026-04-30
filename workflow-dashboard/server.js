@@ -392,11 +392,16 @@ app.post('/api/chat/send', async (req, res) => {
     // Forward to WorkflowBridge running inside VS Code extension
     let agentResponse = { success: false, error: 'Bridge not reachable' };
     try {
-      const bridgeRes = await fetch('http://127.0.0.1:3001/bridge/send', {
+      // WorkflowBridge serves chat at /api/chat/send (not /bridge/send).
+      const bridgeRes = await fetch('http://127.0.0.1:3001/api/chat/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message })
       });
+      if (!bridgeRes.ok) {
+        agentResponse = { success: false, error: `Bridge ${bridgeRes.status} ${bridgeRes.statusText}` };
+        throw new Error(agentResponse.error);
+      }
       agentResponse = await bridgeRes.json();
     } catch (err) {
       agentResponse = { success: false, error: 'Bridge connection failed. Is the extension running?' };
@@ -494,18 +499,19 @@ app.post('/api/autopilot', (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// Legacy alias — keep so older clients still work; route to /api/chat/send.
 app.post('/api/send-message', async (req, res) => {
   try {
     const { message } = req.body;
     if (!message) return res.status(400).json({ error: 'Missing message' });
-    
-    // Forward to WorkflowBridge running inside VS Code extension
-    const bridgeRes = await fetch('http://127.0.0.1:3001/bridge/send', {
+
+    // WorkflowBridge serves chat at /api/chat/send (not /bridge/send).
+    const bridgeRes = await fetch('http://127.0.0.1:3001/api/chat/send', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ message })
     });
-    
+
     const data = await bridgeRes.json();
     logActivity('command', `Sent message to Agent`, bridgeRes.ok ? 'ok' : 'fail');
     res.json(data);
