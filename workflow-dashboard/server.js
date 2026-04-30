@@ -119,7 +119,8 @@ function startFileWatcher() {
       const hash = Buffer.from(raw).toString('base64').slice(0, 32);
       if (hash !== lastStatusHash) {
         lastStatusHash = hash;
-        const data = JSON.parse(raw);
+        const cleaned = raw.charCodeAt(0) === 0xFEFF ? raw.slice(1) : raw;
+        const data = JSON.parse(cleaned);
         broadcastSSE('status_change', {
           currentState: data.currentState,
           previousState: data.previousState,
@@ -165,11 +166,20 @@ function startFileWatcher() {
 // HELPERS
 // ============================================================================
 
+// Strip a UTF-8 BOM (0xFEFF) before JSON.parse — PowerShell's
+// `Set-Content -Encoding UTF8` writes one on Windows PS 5.1.
+function parseJsonSafe(raw) {
+  if (typeof raw === 'string' && raw.charCodeAt(0) === 0xFEFF) raw = raw.slice(1);
+  return JSON.parse(raw);
+}
+
 function readStatus() {
   const defaultStatus = {
-    currentState: 'INIT', previousState: '', phase: '', cycleStart: '',
+    schemaVersion: 1,
+    currentState: 'INIT', previousState: '', phase: '', cycleStart: '', cycleId: '',
     lastTransition: '', transitionCount: 0, retryCount: 0, nextAction: '',
-    nextMode: '', status: 'IN_PROGRESS', blockedReason: '', autopilot: false
+    nextMode: '', status: 'IN_PROGRESS', blockedReason: '', autopilot: false,
+    parallelTracks: false
   };
   if (!fs.existsSync(STATUS_FILE)) return defaultStatus;
 
@@ -177,7 +187,7 @@ function readStatus() {
   while (retries > 0) {
     try {
       const raw = fs.readFileSync(STATUS_FILE, 'utf-8');
-      if (raw.trim()) return JSON.parse(raw);
+      if (raw.trim()) return parseJsonSafe(raw);
     } catch (e) {
       retries--;
       if (retries === 0) throw e;
@@ -274,7 +284,7 @@ app.get('/api/dashboard', (req, res) => {
 app.get('/api/metrics', (req, res) => {
   try {
     if (!fs.existsSync(METRICS_FILE)) return res.json({ cycles: [], summary: {} });
-    const metrics = JSON.parse(fs.readFileSync(METRICS_FILE, 'utf-8'));
+    const metrics = parseJsonSafe(fs.readFileSync(METRICS_FILE, 'utf-8'));
     // Compute summary statistics
     const cycles = metrics.cycles || [];
     const summary = {
@@ -318,7 +328,7 @@ app.get('/api/progress', (req, res) => {
 
     if (fs.existsSync(METRICS_FILE)) {
       try {
-        const metrics = JSON.parse(fs.readFileSync(METRICS_FILE, 'utf-8'));
+        const metrics = parseJsonSafe(fs.readFileSync(METRICS_FILE, 'utf-8'));
         const cycles = metrics.cycles || [];
         completedCycles = cycles.length;
 

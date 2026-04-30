@@ -4,6 +4,7 @@
 
 [![Version](https://img.shields.io/badge/version-3.2.0-blue.svg)](docs/changelog.md)
 [![License](https://img.shields.io/badge/license-Apache%202.0-green.svg)](LICENSE)
+[![Tests](https://img.shields.io/badge/tests-50%2F50%20passing-brightgreen.svg)](tests/README.md)
 [![PowerShell](https://img.shields.io/badge/PowerShell-7%2B-5391FE.svg)](https://github.com/PowerShell/PowerShell)
 [![Node](https://img.shields.io/badge/node-%E2%89%A518-339933.svg)](https://nodejs.org/)
 
@@ -318,11 +319,21 @@ If you want to expose the dashboard to your LAN, set `HOST=0.0.0.0` — but unde
 
 ---
 
+## Tests
+
+Comprehensive integration suite — **50 tests across 9 suites** covering every dashboard endpoint, every quality gate, full workflow cycle (INIT → COMPLETE), control flow (Reset/Undo/Resume), plan injection, security validation, CORS, and the 5-strike enforcement.
+
+```bash
+npm test                                 # all 50 tests (~30s)
+npm run test:filter "quality gates"      # filter by suite name
+node tests/api-suite.mjs --filter "input validation"
+```
+
+The runner is **zero-dependency** (uses Node's built-in `fetch`/`child_process`/`net`), creates an **isolated temp workspace** for every run, and exits non-zero on any failure — drop it into CI directly. Details: [tests/README.md](tests/README.md).
+
 ## Contributing
 
-Issues and PRs welcome. The orchestrator and the dashboard have no automated test suite yet — the easiest way to validate a change is to run a full cycle locally and watch `WORKFLOW/orchestrator.log`.
-
-If you're touching `roo-code-fork/src/workflow/` (the integration layer), keep all code inside that directory so upstream sync stays painless.
+Issues and PRs welcome. Keep all custom code inside `roo-code-fork/src/workflow/` so upstream Roo Code sync stays painless. Run `npm test` before opening a PR — the suite asserts every gate and every transition, so it catches most regressions automatically.
 
 ---
 

@@ -1,0 +1,15 @@
+{
+  "name": "shark-workflow",
+  "version": "3.2.0",
+  "description": "Roo Workflow — multi-agent orchestration framework wrapping Roo Code",
+  "private": true,
+  "scripts": {
+    "test": "node tests/api-suite.mjs",
+    "test:filter": "node tests/api-suite.mjs --filter",
+    "dashboard": "npm start --prefix workflow-dashboard",
+    "dashboard:install": "npm install --prefix workflow-dashboard"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
