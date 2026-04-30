@@ -147,6 +147,26 @@ async function main() {
 			process.exit(0)
 		}
 
+		// If the user passed --editor=ALL, install into every editor we can find on the box.
+		if (editorCommand.toLowerCase() === "all") {
+			const editors = ["code", "code-insiders", "cursor"]
+			let installedAny = false
+			for (const ed of editors) {
+				const r = resolveEditorCommand(ed)
+				if (!r) { console.log(`(skip ${ed}: not installed)`); continue }
+				console.log(`\n=== Installing into ${ed} (${r}) ===`)
+				try { execSync(`${r} --uninstall-extension ${extensionId}`, { stdio: "inherit" }) } catch {}
+				execSync(`${r} --install-extension ${vsixFileName}`, { stdio: "inherit" })
+				installedAny = true
+			}
+			if (!installedAny) {
+				console.error("❌ No supported editor found on PATH or in standard install locations.")
+				rl.close(); process.exit(1)
+			}
+			console.log(`\n✅ Installed into all detected editors.\n⚠️  Fully close every editor window then reopen for the change to take effect.\n`)
+			rl.close(); process.exit(0)
+		}
+
 		console.log(`\nLocating '${editorCommand}' CLI...`)
 		const resolved = resolveEditorCommand(editorCommand)
 		if (!resolved) {
