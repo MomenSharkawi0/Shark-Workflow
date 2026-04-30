@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tic-Tac-Toe</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: system-ui, sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; background: #1a1a2e; color: #eee; }
+    h1 { margin-bottom: 20px; }
+    #status { margin-bottom: 15px; font-size: 1.2rem; }
+    #board { display: grid; grid-template-columns: repeat(3, 100px); grid-template-rows: repeat(3, 100px); gap: 5px; background: #16213e; padding: 5px; border-radius: 8px; }
+    .cell { background: #0f3460; border: none; border-radius: 4px; font-size: 3rem; font-weight: bold; color: #eee; cursor: pointer; transition: background 0.2s; }
+    .cell:hover { background: #1a4a7a; }
+    .cell.x { color: #4cc9f0; }
+    .cell.o { color: #f72585; }
+    #reset { margin-top: 20px; padding: 10px 30px; font-size: 1rem; background: #e94560; color: #fff; border: none; border-radius: 4px; cursor: pointer; }
+    #reset:hover { background: #d63c54; }
+  </style>
+</head>
+<body>
+  <h1>Tic-Tac-Toe</h1>
+  <div id="status">Player X's turn</div>
+  <div id="board"></div>
+  <button id="reset">Reset</button>
+  <script>
+    const board = document.getElementById('board');
+    const status = document.getElementById('status');
+    const resetBtn = document.getElementById('reset');
+    let current = 'X', moves = 0;
+    const cells = [];
+
+    function checkWinner() {
+      const lines = [[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];
+      for (const [a,b,c] of lines) {
+        if (cells[a] && cells[a] === cells[b] && cells[a] === cells[c]) return cells[a];
+      }
+      return null;
+    }
+
+    function handleClick(i) {
+      if (cells[i] || checkWinner()) return;
+      cells[i] = current;
+      board.children[i].textContent = current;
+      board.children[i].classList.add(current.toLowerCase());
+      moves++;
+      const winner = checkWinner();
+      if (winner) { status.textContent = `Player ${winner} wins!`; }
+      else if (moves === 9) { status.textContent = "It's a draw!"; }
+      else { current = current === 'X' ? 'O' : 'X'; status.textContent = `Player ${current}'s turn`; }
+    }
+
+    function createBoard() {
+      board.innerHTML = '';
+      cells.length = 0; moves = 0; current = 'X';
+      status.textContent = "Player X's turn";
+      for (let i = 0; i < 9; i++) {
+        cells.push('');
+        const cell = document.createElement('button');
+        cell.className = 'cell';
+        cell.onclick = () => handleClick(i);
+        board.appendChild(cell);
+      }
+    }
+
+    resetBtn.onclick = createBoard;
+    createBoard();
+  </script>
+</body>
+</html>

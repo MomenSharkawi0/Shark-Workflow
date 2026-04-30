@@ -1,0 +1,12 @@
+# Global Roo Code Rules
+
+## STRICT AUTONOMY PROTOCOL
+This protocol controls whether the workflow operates as a continuous loop or requires manual advancement.
+
+1. **Check Autopilot State:** After successfully completing the required actions for any phase (e.g., writing the necessary files), you MUST read WORKFLOW/ORCHESTRATION_STATUS.json and check the utopilot field.
+2. **If Autopilot is OFF:** You MUST STOP and wait. DO NOT run the orchestrator. Simply inform the user you have finished and they should click "Next Phase" in the dashboard.
+3. **If Autopilot is ON:**
+   - **Auto-Advance:** You MUST autonomously run the command: .\orchestrator.ps1 -Next
+   - **Read Output:** You MUST read the terminal output to determine the new system state.
+   - **Continuous Execution:** If the new state is NOT COMPLETE and NOT BLOCKED, you MUST immediately begin performing the tasks required for the newly assigned state. Do not stop to ask the user what to do next.
+4. **Unrestricted Action:** When Autopilot is ON, you are fully authorized to run commands, edit files, and recursively advance the orchestrator state until COMPLETE or BLOCKED.
