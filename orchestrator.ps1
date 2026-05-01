@@ -1331,6 +1331,12 @@ _Auto-loaded from WORKFLOW/PHASE_QUEUE.json (cursor=$nextCursor of $totalCycles)
     # Read by ContextInjector for every mode + by roo-code.resumeWorkflow.
     Write-CurrentInstruction -State $nextState -ActiveMode $nextConfig.ActiveMode -Instruction $nextConfig.Instruction
 
+    # Clear any stale gate-failure recovery instructions now that we've moved on.
+    $gateFailurePath = Join-Path $ActiveDir 'GATE_FAILURE.md'
+    if (Test-Path $gateFailurePath) {
+        Remove-Item $gateFailurePath -Force -ErrorAction SilentlyContinue
+    }
+
     # --- Diff-based Code Review (Phase 5d) ---
     if ($currentState -match "^EXECUTION" -and $nextState -eq "EXECUTION_REVIEW") {
         Write-Log -Level INFO -Message "Generating EXECUTION_DIFF.diff..."
@@ -2069,8 +2075,71 @@ try {
     }
 }
 catch {
-    Write-Log -Level FAIL -Message "$_"
+    $errMsg = "$_"
+    Write-Log -Level FAIL -Message $errMsg
     Write-Host "Workflow state unchanged." -ForegroundColor Gray
+
+    # V6.4: when a Quality Gate fails, write a structured GATE_FAILURE.md so the
+    # agent (in autopilot) can read it via ContextInjector, fix the deliverable,
+    # and re-run -Next without human intervention. The autonomy protocol picks
+    # this up on the next turn.
+    if ($errMsg -match '^Quality Gate (\S+) FAILED:\s*(\S+)\s+missing required (?:sections|fields):\s*(.+?)\.?\s*$') {
+        $gateNum     = $matches[1]
+        $reportFile  = $matches[2]
+        $missingList = $matches[3]
+        try {
+            if (-not (Test-Path $ActiveDir)) { New-Item -ItemType Directory -Path $ActiveDir -Force | Out-Null }
+            $stateNow = Get-CurrentState
+            $timestamp = Get-Date -Format 'o'
+            $hint = switch ($gateNum) {
+                '3'  { "Add the missing fields to ``WORKFLOW/ACTIVE/PLAN_REVIEW.md``: ``STATUS: APPROVED|NEEDS_REVISION``, ``RATING: N/10`` (numeric 1-10), and ``RATING_REASONING: <text>``. Then re-run ``.\orchestrator.ps1 -Next``." }
+                '5'  { "Add the missing fields to ``WORKFLOW/ACTIVE/EXECUTION_REVIEW.md``: ``STATUS: APPROVED|NEEDS_REVISION``, ``RATING: N/10``, ``RATING_REASONING: <text>``. Then re-run ``.\orchestrator.ps1 -Next``." }
+                { $_ -in '4','4a','4b' } {
+                    "Edit ``WORKFLOW/ACTIVE/$reportFile`` and ensure it has BOTH:`n  - ``## Files Modified`` (or ``## Files Created`` / ``## Files Changed``) with the actual file list.`n  - ``## Tests Run`` with the test command output. If you genuinely couldn't run tests yet (e.g. user must install deps first), set ``testingMode: ""none""`` in ``WORKFLOW/workflow-config.json`` AND include the marker ``_Skipped: testingMode=none_`` in the report. Then re-run ``.\orchestrator.ps1 -Next``."
+                }
+                default { "Read the failure message above, fix the deliverable, then re-run ``.\orchestrator.ps1 -Next``." }
+            }
+
+            $failureMd = @"
+# Gate Failure -- Auto-recovery instructions
+
+> Auto-written by ``orchestrator.ps1`` on every gate failure. Deleted on the next successful ``-Next``.
+> The agent's ContextInjector picks this file up automatically on the next turn.
+
+- **State:** $stateNow
+- **Failed gate:** Gate $gateNum
+- **Failing file:** ``WORKFLOW/ACTIVE/$reportFile``
+- **Missing:** $missingList
+- **Detected at:** $timestamp
+
+## How to fix
+
+$hint
+
+## Autonomy protocol
+
+If autopilot is ON, you MUST:
+
+1. Open the failing file above and add the missing fields/sections (do NOT ask the user).
+2. Run ``.\orchestrator.ps1 -Next`` again.
+3. If it succeeds, delete this file (the orchestrator does that automatically on success).
+4. Continue working in the new state.
+
+You have at most 3 retry attempts at the same gate before stopping. Each retry must show a **different** fix -- if the same edit is rejected twice, the deliverable has a deeper problem and you should escalate.
+
+## Original error
+
+```
+$errMsg
+```
+"@
+            Set-Content -Path (Join-Path $ActiveDir 'GATE_FAILURE.md') -Value $failureMd -Encoding UTF8
+            Write-Log -Level INFO -Message "Wrote WORKFLOW/ACTIVE/GATE_FAILURE.md with auto-recovery instructions."
+        } catch {
+            Write-Log -Level WARN -Message "Could not write GATE_FAILURE.md: $_"
+        }
+    }
+
     exit 1
 }
 finally {

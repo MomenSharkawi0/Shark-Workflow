@@ -2,9 +2,9 @@
 
 > A multi-agent orchestration framework that turns [Roo Code](https://github.com/RooCodeInc/Roo-Code) into a structured **software factory**: enforced state machine, persistent memory, quality gates, and full autopilot.
 
-[![Version](https://img.shields.io/badge/version-6.3.0-blue.svg)](docs/changelog.md)
+[![Version](https://img.shields.io/badge/version-6.4.0-blue.svg)](docs/changelog.md)
 [![License](https://img.shields.io/badge/license-Apache%202.0-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-82%2F82%20passing-brightgreen.svg)](tests/README.md)
+[![Tests](https://img.shields.io/badge/tests-83%2F83%20passing-brightgreen.svg)](tests/README.md)
 [![PowerShell](https://img.shields.io/badge/PowerShell-7%2B-5391FE.svg)](https://github.com/PowerShell/PowerShell)
 [![Node](https://img.shields.io/badge/node-%E2%89%A518-339933.svg)](https://nodejs.org/)
 
@@ -27,6 +27,22 @@ INIT  →  PHASE_PLANNING  →  DETAILED_PLANNING  →  PLAN_REVIEW  →  EXECUT
 ```
 
 ---
+
+## What's new in V6.4 (gate-failure auto-recovery)
+
+V6.3 fixed the autopilot stall caused by mode-swapping, but autopilot still died on **gate failures** — when `-Next` rejected the deliverable (most often Gate 4 because the executor didn't actually run tests), the agent saw `ERROR: Command failed` and stopped, telling the user to run `-Next` again. Running it again produces the same failure.
+
+V6.4 makes gate failures **self-recovering**:
+
+- On any `Quality Gate FAILED` throw, the orchestrator now writes `WORKFLOW/ACTIVE/GATE_FAILURE.md` with:
+  - Which gate failed and which file is broken
+  - Exactly which fields/sections are missing
+  - A gate-specific "How to fix" instruction (Gate 4 → run tests, Gate 3/5 → add RATING + reasoning, etc.)
+  - The autonomy protocol clause: read this, fix, retry, max 3 attempts.
+- ContextInjector auto-loads `GATE_FAILURE.md` for every role, so the agent sees it on the next turn.
+- On the next successful `-Next`, the orchestrator auto-deletes `GATE_FAILURE.md`.
+- `.roorules` now has an explicit "Gate Failure Recovery" section. The agent reads the recovery file, fixes the deliverable, and re-runs `-Next` without asking the user. Up to 3 retries on the same gate, then ESCALATION.md.
+- Executor rules now spell out: **you must run the test command yourself before writing the report**. "Tests pass" with no command output is a Gate 4 violation in spirit.
 
 ## What's new in V6.3 (autopilot lives, prompts slim down)
 
@@ -234,6 +250,7 @@ graph TB
 | `WORKFLOW/ACTIVE/CURRENT_INSTRUCTION.md` | orchestrator.ps1 | All modes (via ContextInjector) |
 | `WORKFLOW/PHASE_QUEUE.json` | PlanReconciler / WorkflowEngine | orchestrator.ps1 (auto-advance on COMPLETE) |
 | `WORKFLOW/CURRENT_MODE.json` | WorkflowWatcher (VS Code extension) | Dashboard |
+| `WORKFLOW/ACTIVE/GATE_FAILURE.md` | orchestrator.ps1 (on gate failure) | All modes (via ContextInjector) — auto-deleted on next successful transition |
 
 ---
 
@@ -410,10 +427,10 @@ If you want to expose the dashboard to your LAN, set `HOST=0.0.0.0` — but unde
 
 ## Tests
 
-Comprehensive integration suite — **82 tests across 14 suites** covering every dashboard endpoint, every quality gate, full workflow cycle (INIT → COMPLETE), control flow (Reset/Undo/Resume), plan injection, security validation, CORS, the 5-strike enforcement, PRD ingestion + reconciliation, per-phase model routing, the V6.1 reliability fixes (tickle file, Gate 4 alternation, testingMode, multi-phase queue), and the V6.2 fixes (game project type + RATING gate).
+Comprehensive integration suite — **83 tests across 14 suites** covering every dashboard endpoint, every quality gate, full workflow cycle (INIT → COMPLETE), control flow (Reset/Undo/Resume), plan injection, security validation, CORS, the 5-strike enforcement, PRD ingestion + reconciliation, per-phase model routing, the V6.1 reliability fixes (tickle file, Gate 4 alternation, testingMode, multi-phase queue), the V6.2 fixes (game project type + RATING gate), and the V6.4 gate-failure auto-recovery.
 
 ```bash
-npm test                                 # all 82 tests (~43s)
+npm test                                 # all 83 tests (~46s)
 npm run test:filter "quality gates"      # filter by suite name
 node tests/api-suite.mjs --filter "V6.1"  # run just the reliability-fix suite
 ```

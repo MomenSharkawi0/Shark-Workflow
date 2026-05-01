@@ -2,6 +2,35 @@
 
 All notable changes to Roo Workflow are documented here.
 
+## v6.4.0 — Gate-failure auto-recovery (2026-05-01)
+
+V6.3 fixed the mode-swap stall. V6.4 fixes the **gate-failure stall** — the next thing to die in autopilot.
+
+When the executor finished a Snake game implementation but didn't run pytest, `-Next` rejected EXECUTION_REPORT.md with `Quality Gate 4 FAILED: missing required sections: Tests Run`. The agent saw `ERROR: Command failed: powershell.exe ... -Next`, gave up, and told the user "Run `.\orchestrator.ps1 -Next` to transition to EXECUTION_REVIEW" — which would fail the same way. Loop dead.
+
+### Fix
+
+- **New** `WORKFLOW/ACTIVE/GATE_FAILURE.md` — auto-written by `orchestrator.ps1` on any `Quality Gate FAILED` throw. Parses the failure message into structured fields (gate number, broken file, missing sections) and emits a gate-specific "How to fix" instruction:
+  - **Gate 3 / Gate 5** → "add `STATUS:`, `RATING: N/10`, `RATING_REASONING:`"
+  - **Gate 4 / 4a / 4b** → "ensure `## Files Modified|Created|Changed` AND `## Tests Run`. If deps aren't installed, set `testingMode: none` + skip marker."
+- **Auto-deleted** on the next successful `-Next` transition so it never lingers as stale guidance.
+- **ContextInjector** updated — `WORKFLOW/ACTIVE/GATE_FAILURE.md` is now the FIRST entry in every role's context list (after `ORCHESTRATION_STATUS.json`), so on the next agent turn it's immediately visible.
+- **`.roorules`** — new explicit "Gate Failure Recovery" section. Tells the agent: read the recovery file, edit the deliverable, retry. Max 3 attempts on the same gate, then ESCALATION.md. Spells out common cases (missing Tests Run → run the test command; missing RATING → add the field; missing STATUS → replace PENDING).
+- **Executor rules** — strengthened the `## Tests Run` requirement: "you must run the test command yourself before writing the report. 'Tests pass' with no command output is a Gate 4 violation in spirit. The Director's Gate 5 review will reject reports that claim tests passed without showing output." Plus a "On gate failure" section pointing to the recovery file.
+
+### Tests
+
+- **+1 new test** in suite `12b. V6.1 reliability fixes` — verifies `GATE_FAILURE.md` is written on Gate 3 failure, names the missing fields, and is auto-deleted on the recovery `-Next`.
+- **83/83 green**, ~46s full-run.
+
+### Architectural notes
+
+- The recovery file is **deliberately structured**: a fixed top section (state, gate, file, missing list) plus a gate-specific hint. The agent doesn't have to interpret the raw exception text — the orchestrator does the parsing once, then writes the structured form.
+- Auto-delete on success ensures GATE_FAILURE.md is never present during normal operation. The agent only sees it when there's something concrete to fix.
+- The 3-retry cap on same-gate failures is documented in the rules but enforced by the agent (orchestrator doesn't track per-gate retry counts; only the existing 5-strike global counter).
+
+---
+
 ## v6.3.0 — Preserve workflow-master + slim autopilot prompts (2026-05-01)
 
 Two follow-up bugs from a real V6.2 autopilot session:
