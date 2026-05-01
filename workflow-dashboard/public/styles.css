@@ -382,8 +382,11 @@ body {
 .wiz-input:disabled { opacity: 0.5; cursor: not-allowed; background: #0a0d12; }
 select.wiz-input { cursor: pointer; }
 select.wiz-input[multiple] { min-height: 5rem; }
-textarea.wiz-input { resize: vertical; }
+textarea.wiz-input { resize: vertical; min-height: 4.2rem; line-height: 1.5; }
 .wiz-input::placeholder { color: var(--text-muted); }
+/* Tall textareas (data model, success criteria) — match placeholder content height.
+   Need higher specificity than `textarea.wiz-input { min-height: 4.2rem }`. */
+textarea.wiz-input.wiz-textarea-tall { min-height: 8.5rem; }
 
 #wizardCard .section-label { user-select: none; }
 #wizardToggleHint { font-weight: 500; color: var(--text-muted); }
@@ -545,45 +548,45 @@ textarea.wiz-input { resize: vertical; }
 
 .prompt-area {
   background: var(--bg-input);
-  border: 1px solid rgba(99, 102, 241, 0.2);
+  border: 1px solid var(--border-default);
   border-radius: var(--radius-md);
   padding: var(--space-md);
-  font-size: 0.875rem; color: var(--text-secondary);
+  font-size: 0.825rem; color: var(--text-secondary);
   line-height: 1.6;
-  font-family: 'JetBrains Mono', monospace;
+  font-family: 'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace;
   min-height: 100px;
-  transition: border-color 0.3s;
+  transition: border-color 0.15s ease;
 }
-.prompt-area:hover { border-color: rgba(99, 102, 241, 0.5); }
+.prompt-area:hover { border-color: var(--border-strong); }
 
 .copy-btn {
   padding: 0.375rem 0.75rem; border-radius: var(--radius-sm);
   font-size: 0.75rem; font-weight: 500;
-  color: rgba(129, 140, 248, 1);
-  border: 1px solid rgba(99, 102, 241, 0.3);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-default);
   background: transparent; cursor: pointer;
   display: flex; align-items: center; gap: 0.375rem;
-  transition: all 0.2s ease;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 }
-.copy-btn:hover { background: rgba(99, 102, 241, 0.2); }
-.copy-btn.copied { background: rgba(16, 185, 129, 0.2); color: var(--accent-emerald); }
+.copy-btn:hover { background: var(--accent-soft); border-color: var(--accent); color: var(--text-primary); }
+.copy-btn.copied { background: rgba(34,197,94,0.15); color: var(--ok); border-color: rgba(34,197,94,0.4); }
 
 /* ============================================================================
    Autopilot Toggle
    ============================================================================ */
 
 .autopilot-wrapper {
-  display: flex; align-items: center; gap: 0.75rem;
-  background: rgba(30, 41, 59, 0.5); padding: 0.375rem 0.75rem;
-  border-radius: var(--radius-sm); border: 1px solid rgba(51, 65, 85, 0.5);
+  display: flex; align-items: center; gap: 0.6rem;
+  background: var(--bg-input); padding: 0.35rem 0.7rem;
+  border-radius: var(--radius-sm); border: 1px solid var(--border-default);
 }
 
 .toggle-track {
-  position: relative; width: 2.25rem; height: 1.25rem;
-  background: #334155; border-radius: var(--radius-full);
-  cursor: pointer; transition: background 0.3s;
+  position: relative; width: 2rem; height: 1.1rem;
+  background: #2a3140; border-radius: var(--radius-full);
+  cursor: pointer; transition: background 0.2s;
 }
-.toggle-track.on { background: var(--accent-indigo); }
+.toggle-track.on { background: var(--accent); }
 
 .toggle-thumb {
   position: absolute; top: 2px; left: 2px;
@@ -647,13 +650,13 @@ textarea.wiz-input { resize: vertical; }
    ============================================================================ */
 
 @keyframes pulse-glow {
-  0%, 100% { box-shadow: 0 0 25px rgba(99, 102, 241, 0.6); }
-  50% { box-shadow: 0 0 40px rgba(99, 102, 241, 0.9); }
+  0%, 100% { box-shadow: 0 0 0 3px var(--accent-soft); }
+  50%      { box-shadow: 0 0 0 5px var(--accent-soft); }
 }
 
 @keyframes pulse-glow-green {
-  0%, 100% { box-shadow: 0 0 8px rgba(16, 185, 129, 0.4); }
-  50% { box-shadow: 0 0 16px rgba(16, 185, 129, 0.7); }
+  0%, 100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.45); }
+  50%      { box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.20); }
 }
 
 @keyframes shimmer {
@@ -681,64 +684,71 @@ textarea.wiz-input { resize: vertical; }
    ============================================================================ */
 
 .activity-feed {
-  max-height: 320px; overflow-y: auto;
-  font-family: 'JetBrains Mono', monospace;
+  max-height: 320px; min-height: 220px; overflow-y: auto;
+  font-family: 'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace;
   font-size: 0.75rem;
 }
 .activity-feed::-webkit-scrollbar { width: 5px; }
 .activity-feed::-webkit-scrollbar-track { background: transparent; }
-.activity-feed::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+.activity-feed::-webkit-scrollbar-thumb { background: #2a3140; border-radius: 3px; }
 
 .activity-row {
   display: flex; align-items: flex-start; gap: 0.5rem;
   padding: 0.375rem 1rem;
-  border-bottom: 1px solid rgba(30, 41, 59, 0.3);
-  transition: background 0.2s;
+  border-bottom: 1px solid var(--border-subtle);
+  transition: background 0.15s ease;
 }
-.activity-row:hover { background: rgba(30, 41, 59, 0.3); }
+.activity-row:hover { background: var(--bg-card-hover); }
 
-.feed-icon { width: 1rem; text-align: center; flex-shrink: 0; font-size: 0.7rem; margin-top: 1px; }
-.feed-time { color: var(--text-dim); width: 5rem; flex-shrink: 0; font-size: 0.6875rem; }
-.feed-msg { flex: 1; line-height: 1.4; word-break: break-word; }
+.feed-icon { width: 1.5rem; text-align: center; flex-shrink: 0; font-size: 0.65rem; font-weight: 600; margin-top: 1px; color: var(--text-muted); letter-spacing: 0; }
+.feed-time { color: var(--text-muted); width: 5rem; flex-shrink: 0; font-size: 0.6875rem; }
+.feed-msg  { flex: 1; line-height: 1.45; word-break: break-word; color: var(--text-secondary); }
 
 .panel-header {
-  padding: 0.75rem 1.25rem;
-  border-bottom: 1px solid rgba(30, 41, 59, 0.5);
+  padding: 0.6rem 1rem;
+  border-bottom: 1px solid var(--border-subtle);
   display: flex; align-items: center; justify-content: space-between;
 }
 
 .pulse-dot {
-  width: 0.5rem; height: 0.5rem; border-radius: 50%;
-  background: var(--accent-emerald);
-  animation: pulse-glow-green 2s infinite;
+  width: 0.45rem; height: 0.45rem; border-radius: 50%;
+  background: var(--ok);
+  animation: pulse-glow-green 2.4s infinite;
 }
 
 /* ============================================================================
-   Metrics Summary
+   Metrics Summary (Cycle Analytics — full-width 4-col strip)
    ============================================================================ */
 
 .metrics-summary {
-  display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.75rem;
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.75rem;
 }
+@media (max-width: 768px) { .metrics-summary { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 420px) { .metrics-summary { grid-template-columns: 1fr; } }
 
 .metric-mini {
-  background: rgba(15, 23, 42, 0.5);
-  border: 1px solid rgba(51, 65, 85, 0.3);
+  background: var(--bg-input);
+  border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
-  padding: 0.75rem;
-  display: flex; flex-direction: column; gap: 0.25rem;
+  padding: 0.75rem 0.9rem;
+  display: flex; flex-direction: column; gap: 0.3rem;
 }
 
 .metric-mini-value {
-  font-size: 1.5rem; font-weight: 800;
-  background: linear-gradient(135deg, #e2e8f0, #94a3b8);
-  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  font-size: 1.4rem; font-weight: 600; letter-spacing: -0.02em;
+  color: var(--text-primary);
+  background: none;
+  -webkit-background-clip: initial; -webkit-text-fill-color: initial;
 }
 
 .text-warn {
-  background: linear-gradient(135deg, #f59e0b, #ef4444) !important;
-  -webkit-background-clip: text !important; -webkit-text-fill-color: transparent !important;
+  color: var(--warn) !important;
+  background: none !important;
+  -webkit-background-clip: initial !important; -webkit-text-fill-color: initial !important;
 }
+
+/* Match Activity Feed height for the side-by-side row */
+.gates-log { min-height: 220px; }
 
 /* ============================================================================
    5-Column Grid (Metrics Row)
@@ -768,10 +778,9 @@ textarea.wiz-input { resize: vertical; }
 }
 
 .progress-ring-fill {
-  fill: none; stroke: url(#progressGradient); stroke-width: 6;
+  fill: none; stroke: var(--accent); stroke-width: 6;
   stroke-linecap: round;
-  transition: stroke-dashoffset 1s cubic-bezier(0.4, 0, 0.2, 1);
-  filter: drop-shadow(0 0 6px rgba(99, 102, 241, 0.4));
+  transition: stroke-dashoffset 0.6s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .progress-ring-text {
@@ -780,9 +789,10 @@ textarea.wiz-input { resize: vertical; }
 }
 
 .progress-ring-value {
-  font-size: 1.125rem; font-weight: 800;
-  background: linear-gradient(135deg, var(--accent-indigo), var(--accent-purple));
-  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  font-size: 1.05rem; font-weight: 600; letter-spacing: -0.02em;
+  color: var(--accent);
+  background: none;
+  -webkit-background-clip: initial; -webkit-text-fill-color: initial;
 }
 
 /* ============================================================================
@@ -830,8 +840,9 @@ textarea.wiz-input { resize: vertical; }
 }
 
 .chat-bubble-user {
-  background: linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(139, 92, 246, 0.15));
-  border: 1px solid rgba(99, 102, 241, 0.3);
+  background: var(--accent-soft);
+  border: 1px solid rgba(96, 165, 250, 0.30);
+  color: var(--text-primary);
   margin-left: auto; border-bottom-right-radius: 4px;
 }
 
@@ -873,20 +884,20 @@ textarea.wiz-input { resize: vertical; }
   font-size: 0.8125rem; font-family: 'Inter', sans-serif;
   transition: border-color 0.3s;
 }
-.chat-input:focus { outline: none; border-color: var(--accent-indigo); }
-.chat-input::placeholder { color: var(--text-dim); }
+.chat-input:focus { outline: none; border-color: var(--border-focus); box-shadow: 0 0 0 3px var(--accent-soft); }
+.chat-input::placeholder { color: var(--text-muted); }
 
 .chat-send-btn {
-  width: 36px; height: 36px; border-radius: 50%;
-  background: linear-gradient(135deg, var(--accent-indigo), var(--accent-purple));
-  border: none; cursor: pointer;
+  width: 34px; height: 34px; border-radius: var(--radius-sm);
+  background: var(--accent-strong);
+  border: 1px solid var(--accent-strong); cursor: pointer;
   display: flex; align-items: center; justify-content: center;
-  color: white; transition: all 0.3s; flex-shrink: 0;
+  color: #fff; transition: background 0.15s ease, border-color 0.15s ease;
+  flex-shrink: 0;
 }
-.chat-send-btn:hover {
-  transform: scale(1.1); box-shadow: 0 0 20px rgba(99, 102, 241, 0.4);
-}
-.chat-send-btn:active { transform: scale(0.95); }
+.chat-send-btn:hover  { background: #2563eb; border-color: #2563eb; }
+.chat-send-btn:active { background: #1d4ed8; }
+.chat-send-btn .icon  { width: 0.9rem; height: 0.9rem; }
 
 /* ============================================================================
    Bridge Status Indicator
@@ -916,13 +927,13 @@ textarea.wiz-input { resize: vertical; }
    ============================================================================ */
 
 .action-btn {
-  padding: 0.375rem 0.75rem; border-radius: var(--radius-sm);
-  font-size: 0.75rem; font-weight: 500;
-  color: rgba(129, 140, 248, 1);
-  border: 1px solid rgba(99, 102, 241, 0.3);
-  background: transparent; cursor: pointer;
-  display: flex; align-items: center; gap: 0.375rem;
-  transition: all 0.2s ease;
+  padding: 0.4rem 0.8rem; border-radius: var(--radius-sm);
+  font-size: 0.78rem; font-weight: 500;
+  color: var(--text-secondary);
+  border: 1px solid var(--border-default);
+  background: var(--bg-input); cursor: pointer;
+  display: flex; align-items: center; justify-content: center; gap: 0.4rem;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 }
-.action-btn:hover { background: rgba(99, 102, 241, 0.15); }
-.action-btn.copied { background: rgba(16, 185, 129, 0.2); color: var(--accent-emerald); }
+.action-btn:hover { background: var(--accent-soft); border-color: var(--accent); color: var(--text-primary); }
+.action-btn.copied { background: rgba(34,197,94,0.15); color: var(--ok); border-color: rgba(34,197,94,0.4); }

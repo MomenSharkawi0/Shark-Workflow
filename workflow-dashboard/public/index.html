@@ -28,6 +28,9 @@
       <symbol id="icon-clipboard" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2h6a2 2 0 0 1 2 2v0H7v0a2 2 0 0 1 2-2z"/><rect x="5" y="4" width="14" height="18" rx="2"/></symbol>
       <symbol id="icon-cog"      viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></symbol>
       <symbol id="icon-layers"   viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></symbol>
+      <!-- Send icon — clean horizontal paper-plane, recognisable at small size -->
+      <symbol id="icon-send"     viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></symbol>
+      <symbol id="icon-copy"     viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></symbol>
     </defs>
   </svg>
 
@@ -238,8 +241,8 @@
                 <select id="wizDbOrm" class="wiz-input"></select>
               </label>
             </div>
-            <label class="wiz-label">Data model / entities (free-form — list the tables/collections you'll need)
-              <textarea id="wizDataModel" class="wiz-input" rows="3" placeholder="e.g.&#10;- users (id, email, name, role, created_at)&#10;- employees (id, user_id, department_id, hire_date, salary)&#10;- departments (id, name, manager_id)&#10;- attendance_records (id, employee_id, clock_in, clock_out, location)"></textarea>
+            <label class="wiz-label">Data model / entities (free-form &mdash; list the tables/collections you'll need)
+              <textarea id="wizDataModel" class="wiz-input wiz-textarea-tall" rows="6" placeholder="e.g.&#10;- users (id, email, name, role, created_at)&#10;- employees (id, user_id, department_id, hire_date, salary)&#10;- departments (id, name, manager_id)&#10;- attendance_records (id, employee_id, clock_in, clock_out, location)"></textarea>
             </label>
           </div>
 
@@ -276,8 +279,8 @@
             <label class="wiz-label">Constraints / requirements (optional)
               <textarea id="wizConstraints" class="wiz-input" rows="2" placeholder="e.g. Must run on shared cPanel hosting. Spanish + English UI. GDPR-compliant. No paid third-party services."></textarea>
             </label>
-            <label class="wiz-label">Success criteria (optional — leave blank for sensible defaults)
-              <textarea id="wizSuccess" class="wiz-input" rows="2" placeholder="e.g.&#10;- Employee can clock in/out within 50m geo-fence&#10;- Admin can export payroll CSV&#10;- All endpoints have integration tests"></textarea>
+            <label class="wiz-label">Success criteria (optional &mdash; leave blank for sensible defaults)
+              <textarea id="wizSuccess" class="wiz-input wiz-textarea-tall" rows="5" placeholder="e.g.&#10;- Employee can clock in/out within 50m geo-fence&#10;- Admin can export payroll CSV&#10;- All endpoints have integration tests"></textarea>
             </label>
             <div class="wiz-grid-2">
               <label class="wiz-label">Autonomy level
@@ -411,12 +414,12 @@
           <div class="prompt-header text-xs text-dim">Suggested prompt for current phase:</div>
           <div id="promptArea" class="prompt-area font-mono">Loading...</div>
           <div class="flex gap-2 mt-2">
-            <button id="sendPromptBtn" onclick="sendPromptToAgent()" class="action-btn" style="flex:2;background:var(--accent-indigo);color:white;border:none">
-              <svg class="icon-sm" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/></svg>
+            <button id="sendPromptBtn" onclick="sendPromptToAgent()" class="btn btn-primary" style="flex:2">
+              <svg class="icon"><use href="#icon-send"/></svg>
               <span>Send to Agent</span>
             </button>
-            <button id="copyBtn" onclick="copyPrompt()" class="action-btn" style="flex:1">
-              <svg class="icon-sm" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"/></svg>
+            <button id="copyBtn" onclick="copyPrompt()" class="btn" style="flex:1">
+              <svg class="icon"><use href="#icon-copy"/></svg>
               <span>Copy</span>
             </button>
           </div>
@@ -433,8 +436,8 @@
         <!-- Chat Input -->
         <div class="chat-input-bar">
           <input type="text" id="chatInput" class="chat-input" placeholder="Type a message to the agent..." onkeypress="if(event.key === 'Enter') sendChatMessage()">
-          <button id="sendChatBtn" onclick="sendChatMessage()" class="chat-send-btn">
-            <svg class="icon-sm" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/></svg>
+          <button id="sendChatBtn" onclick="sendChatMessage()" class="chat-send-btn" aria-label="Send message">
+            <svg class="icon"><use href="#icon-send"/></svg>
           </button>
         </div>
         <p id="actionFeedback" class="text-xs text-dim mt-1 text-center">Ready</p>
@@ -442,22 +445,8 @@
     </section>
 
     <!-- Activity Feed + Cycle Metrics -->
-    <section class="grid-2 card-enter" style="animation-delay:0.25s">
-      <!-- Activity Feed -->
-      <div class="glass-card" style="padding:0;overflow:hidden">
-        <div class="panel-header">
-          <div class="flex items-center gap-2">
-            <div class="pulse-dot"></div>
-            <span class="section-label" style="margin-bottom:0">Live Activity Feed</span>
-          </div>
-          <span class="label-sm" style="color:var(--text-dim)">SSE Stream</span>
-        </div>
-        <div id="activityFeed" class="activity-feed">
-          <p class="feed-placeholder text-xs text-dim" style="padding:1rem;text-align:center">Waiting for events...</p>
-        </div>
-      </div>
-
-      <!-- Cycle Analytics -->
+    <!-- Cycle Analytics — full-width 4-metric strip -->
+    <section class="card-enter" style="animation-delay:0.22s">
       <div class="glass-card">
         <h2 class="section-label">Cycle Analytics</h2>
         <div id="metricsSummary" class="metrics-summary">
@@ -478,10 +467,30 @@
             <span class="metric-mini-value">0</span>
           </div>
         </div>
+      </div>
+    </section>
 
-        <h2 class="section-label mt-3">Quality Gate History</h2>
+    <!-- Activity Feed | Quality Gate History — balanced 2-col -->
+    <section class="grid-2 card-enter" style="animation-delay:0.25s">
+      <!-- Activity Feed -->
+      <div class="glass-card" style="padding:0;overflow:hidden">
+        <div class="panel-header">
+          <div class="flex items-center gap-2">
+            <div class="pulse-dot"></div>
+            <span class="section-label" style="margin-bottom:0">Live Activity Feed</span>
+          </div>
+          <span class="label-sm" style="color:var(--text-muted)">SSE Stream</span>
+        </div>
+        <div id="activityFeed" class="activity-feed">
+          <p class="feed-placeholder text-xs text-muted" style="padding:1rem;text-align:center">Waiting for events&hellip;</p>
+        </div>
+      </div>
+
+      <!-- Quality Gate History -->
+      <div class="glass-card">
+        <h2 class="section-label">Quality Gate History</h2>
         <div id="gatesLog" class="gates-log">
-          <p class="text-xs text-dim">No gate results yet.</p>
+          <p class="text-xs text-muted">No gate results yet.</p>
         </div>
       </div>
     </section>
