@@ -219,7 +219,7 @@
                 <input type="text" id="wizProjectName" class="wiz-input" placeholder="e.g. acme-hr-platform">
               </label>
               <label class="wiz-label">Project type
-                <select id="wizProjectType" class="wiz-input"></select>
+                <select id="wizProjectType" class="wiz-input" onchange="onProjectTypeChange()"></select>
               </label>
             </div>
             <label class="wiz-label">Summary (one or two sentences — what are we building?)
@@ -228,7 +228,7 @@
           </div>
 
           <!-- Section 2: Backend -->
-          <div class="wiz-section">
+          <div class="wiz-section" data-wiz-section="backend">
             <h3 class="wiz-section-title">2. Backend</h3>
             <div class="wiz-grid-3">
               <label class="wiz-label">Framework
@@ -249,7 +249,7 @@
           </div>
 
           <!-- Section 3: Frontend -->
-          <div class="wiz-section">
+          <div class="wiz-section" data-wiz-section="frontend">
             <h3 class="wiz-section-title">3. Frontend (web)</h3>
             <div class="wiz-grid-3">
               <label class="wiz-label">Framework
@@ -265,7 +265,7 @@
           </div>
 
           <!-- Section 4: Mobile -->
-          <div class="wiz-section">
+          <div class="wiz-section" data-wiz-section="mobile">
             <h3 class="wiz-section-title">4. Mobile</h3>
             <div class="wiz-grid-3">
               <label class="wiz-label">Framework
@@ -283,8 +283,30 @@
             </div>
           </div>
 
+          <!-- Section 4b: Game (only shown when projectType=game) -->
+          <div class="wiz-section" data-wiz-section="game" style="display:none">
+            <h3 class="wiz-section-title">4b. Game engine</h3>
+            <p class="text-xs text-muted" style="margin-bottom:0.6rem">Choose an engine that matches your skill level and target platform. Backend / Database / Auth sections above are hidden because most games don't need them.</p>
+            <div class="wiz-grid-3">
+              <label class="wiz-label">Engine
+                <select id="wizGameEngine" class="wiz-input" onchange="onGameEngineChange()"></select>
+              </label>
+              <label class="wiz-label">Target platform
+                <select id="wizGameTarget" class="wiz-input"></select>
+              </label>
+              <label class="wiz-label">Language version
+                <select id="wizGameLanguageVersion" class="wiz-input" disabled></select>
+              </label>
+            </div>
+            <div id="wizGameExtrasRow" style="display:none">
+              <label class="wiz-label">Engine extras (physics, UI helpers, etc.)
+                <select id="wizGameExtras" class="wiz-input" multiple size="4"></select>
+              </label>
+            </div>
+          </div>
+
           <!-- Section 5: Database -->
-          <div class="wiz-section">
+          <div class="wiz-section" data-wiz-section="database">
             <h3 class="wiz-section-title">5. Data layer</h3>
             <div class="wiz-grid-3">
               <label class="wiz-label">Primary database
@@ -303,7 +325,7 @@
           </div>
 
           <!-- Section 6: Auth + Infra -->
-          <div class="wiz-section">
+          <div class="wiz-section" data-wiz-section="auth-infra">
             <h3 class="wiz-section-title">6. Auth, infra & testing</h3>
             <div class="wiz-grid-3">
               <label class="wiz-label">Authentication

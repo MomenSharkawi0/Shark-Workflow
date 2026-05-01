@@ -2,9 +2,9 @@
 
 > A multi-agent orchestration framework that turns [Roo Code](https://github.com/RooCodeInc/Roo-Code) into a structured **software factory**: enforced state machine, persistent memory, quality gates, and full autopilot.
 
-[![Version](https://img.shields.io/badge/version-6.1.0-blue.svg)](docs/changelog.md)
+[![Version](https://img.shields.io/badge/version-6.2.0-blue.svg)](docs/changelog.md)
 [![License](https://img.shields.io/badge/license-Apache%202.0-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-79%2F79%20passing-brightgreen.svg)](tests/README.md)
+[![Tests](https://img.shields.io/badge/tests-82%2F82%20passing-brightgreen.svg)](tests/README.md)
 [![PowerShell](https://img.shields.io/badge/PowerShell-7%2B-5391FE.svg)](https://github.com/PowerShell/PowerShell)
 [![Node](https://img.shields.io/badge/node-%E2%89%A518-339933.svg)](https://nodejs.org/)
 
@@ -27,6 +27,32 @@ INIT  →  PHASE_PLANNING  →  DETAILED_PLANNING  →  PLAN_REVIEW  →  EXECUT
 ```
 
 ---
+
+## What's new in V6.2 (game-aware wizard + Director ratings)
+
+V6.2 makes the wizard project-type-aware and forces the Director to commit to a numeric rating on every review — no more silent rubber-stamps. **82/82 tests passing**.
+
+### Game-aware wizard
+
+The wizard previously showed Laravel/FastAPI/Django even when you were trying to build a Pygame project — and never offered a game engine at all. Fixed:
+
+- New **"Game / interactive (2D / 3D)"** project type.
+- New `game` section with 22 engines: **pygame, arcade, pyglet, ursina, panda3d, kivy, raylib-py** (Python); **phaser, three.js, babylon.js, pixi.js** (JS); **Godot (GDScript & C#), Unity, MonoGame** (C#); **LÖVE/Love2D** (Lua); **raylib, SFML** (C/C++); **Bevy, ggez, Macroquad** (Rust).
+- New target-platform select (desktop / browser / mobile / console / multi).
+- Engine extras (physics, render pipelines, etc.) surface contextually — e.g. `bevy_rapier` only when Bevy is selected.
+- New `sectionApplicability` schema drives **smart section toggling**: pick "Game" and the wizard hides the Backend / Frontend / Mobile / Database / Auth sections that don't apply, and shows the Game section instead. Defaults are auto-set to "none" for hidden sections so they don't pollute FEATURE_REQUEST.md.
+
+### Director rating (1-10) on every review
+
+Every `PLAN_REVIEW.md` and `EXECUTION_REVIEW.md` now MUST contain three fields. Gate 3 and Gate 5 throw if any are missing:
+
+```
+STATUS: APPROVED            (or NEEDS_REVISION)
+RATING: 8/10                (numeric 1-10)
+RATING_REASONING: <one or two lines explaining the score>
+```
+
+The rating is required even when STATUS is APPROVED — it tells the Executor where the weak spots are. Score guide is documented in [`.roo/rules/director-rules.md`](.roo/rules/director-rules.md): 9-10 comprehensive, 7-8 solid with one or two thin spots, 5-6 borderline, 3-4 significant gaps, 1-2 broken.
 
 ## What's new in V6.1 (reliability fixes)
 
@@ -377,10 +403,10 @@ If you want to expose the dashboard to your LAN, set `HOST=0.0.0.0` — but unde
 
 ## Tests
 
-Comprehensive integration suite — **79 tests across 14 suites** covering every dashboard endpoint, every quality gate, full workflow cycle (INIT → COMPLETE), control flow (Reset/Undo/Resume), plan injection, security validation, CORS, the 5-strike enforcement, PRD ingestion + reconciliation, per-phase model routing, and the V6.1 reliability fixes (tickle file, Gate 4 alternation, testingMode, multi-phase queue).
+Comprehensive integration suite — **82 tests across 14 suites** covering every dashboard endpoint, every quality gate, full workflow cycle (INIT → COMPLETE), control flow (Reset/Undo/Resume), plan injection, security validation, CORS, the 5-strike enforcement, PRD ingestion + reconciliation, per-phase model routing, the V6.1 reliability fixes (tickle file, Gate 4 alternation, testingMode, multi-phase queue), and the V6.2 fixes (game project type + RATING gate).
 
 ```bash
-npm test                                 # all 79 tests (~33s)
+npm test                                 # all 82 tests (~43s)
 npm run test:filter "quality gates"      # filter by suite name
 node tests/api-suite.mjs --filter "V6.1"  # run just the reliability-fix suite
 ```

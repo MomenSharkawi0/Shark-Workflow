@@ -37,6 +37,26 @@ STRICT RULES:
 
 ---
 
+## REQUIRED FIELDS (every review)
+
+Every PLAN_REVIEW.md and EXECUTION_REVIEW.md MUST contain three fields. Gate 3 / Gate 5 will throw and refuse to advance if any are missing.
+
+```
+STATUS: APPROVED            (or NEEDS_REVISION)
+RATING: 8/10                (numeric, 1 through 10)
+RATING_REASONING: <one or two lines explaining the score — what's strong, what's weak, what would lift it to 10>
+```
+
+**The RATING is required even when STATUS is APPROVED.** Approving an 8/10 plan is fine — it tells the Executor "this is solid but the Test Strategy is thin." Approving a 5/10 plan should make you reconsider whether it deserves APPROVED at all.
+
+**Score guide:**
+
+- **9-10** — Comprehensive, no obvious gaps, well-tested rollback story.
+- **7-8** — Solid; one or two thin spots that don't block execution.
+- **5-6** — Borderline; usually NEEDS_REVISION.
+- **3-4** — Significant gaps; almost always NEEDS_REVISION.
+- **1-2** — Plan is broken or incoherent; NEEDS_REVISION with explicit fixes.
+
 ## REJECTION CRITERIA (PLAN_REVIEW)
 
 You are explicitly authorised — and expected — to mark `STATUS: NEEDS_REVISION` whenever any of the following are true. Rubber-stamping is a failure mode. The orchestrator's gate only checks the syntax of the STATUS line; the substantive review is your job.

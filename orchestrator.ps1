@@ -1023,11 +1023,22 @@ function Invoke-StateTransition {
                 Write-QualityGateResult -GateNumber 2 -GateName "Detailed Plan Valid" -Passed $true -Notes $gateNotes
             }
             "PLAN_REVIEW" {
-                # Gate 3: PLAN_REVIEW.md must have STATUS field
+                # Gate 3 (V6.2): PLAN_REVIEW.md must have STATUS + numeric RATING + reasoning.
+                # Rating forces the Director to do a real review instead of rubber-stamping.
+                $missing = @()
                 if ($fileContent -notmatch 'STATUS:\s*(APPROVED|NEEDS_REVISION)') {
-                    throw "Quality Gate 3 FAILED: PLAN_REVIEW.md must contain 'STATUS: APPROVED' or 'STATUS: NEEDS_REVISION'."
+                    $missing += "STATUS: APPROVED|NEEDS_REVISION"
                 }
-                $gateNotes = "STATUS field present"
+                if ($fileContent -notmatch 'RATING:\s*(10|[1-9])\s*/\s*10\b') {
+                    $missing += "RATING: N/10 (1-10)"
+                }
+                if ($fileContent -notmatch '(?ms)RATING_REASONING:\s*\S+') {
+                    $missing += "RATING_REASONING: <text>"
+                }
+                if ($missing.Count -gt 0) {
+                    throw "Quality Gate 3 FAILED: PLAN_REVIEW.md missing required fields: $($missing -join ', ')."
+                }
+                $gateNotes = "STATUS + RATING + reasoning all present"
                 Write-QualityGateResult -GateNumber 3 -GateName "Plan Review Valid" -Passed $true -Notes $gateNotes
             }
             "EXECUTION" {
@@ -1040,11 +1051,21 @@ function Invoke-StateTransition {
                 Test-ExecutionReportGate -Content $fileContent -ReportLabel 'EXECUTION_REPORT_FRONTEND.md' -GateLabel '4b' -GateName 'Frontend Execution Report Valid'
             }
             "EXECUTION_REVIEW" {
-                # Gate 5: EXECUTION_REVIEW.md must have STATUS field
+                # Gate 5 (V6.2): EXECUTION_REVIEW.md must have STATUS + numeric RATING + reasoning.
+                $missing = @()
                 if ($fileContent -notmatch 'STATUS:\s*(APPROVED|NEEDS_REVISION)') {
-                    throw "Quality Gate 5 FAILED: EXECUTION_REVIEW.md must contain 'STATUS: APPROVED' or 'STATUS: NEEDS_REVISION'."
+                    $missing += "STATUS: APPROVED|NEEDS_REVISION"
                 }
-                $gateNotes = "STATUS field present"
+                if ($fileContent -notmatch 'RATING:\s*(10|[1-9])\s*/\s*10\b') {
+                    $missing += "RATING: N/10 (1-10)"
+                }
+                if ($fileContent -notmatch '(?ms)RATING_REASONING:\s*\S+') {
+                    $missing += "RATING_REASONING: <text>"
+                }
+                if ($missing.Count -gt 0) {
+                    throw "Quality Gate 5 FAILED: EXECUTION_REVIEW.md missing required fields: $($missing -join ', ')."
+                }
+                $gateNotes = "STATUS + RATING + reasoning all present"
                 Write-QualityGateResult -GateNumber 5 -GateName "Execution Review Valid" -Passed $true -Notes $gateNotes
             }
         }

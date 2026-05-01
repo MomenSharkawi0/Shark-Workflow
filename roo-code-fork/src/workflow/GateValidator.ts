@@ -85,10 +85,13 @@ export class GateValidator {
             gateName: "Plan Review Valid",
             expectedFile: "PLAN_REVIEW.md",
             validate: (content: string) => {
-                const hasStatus = /STATUS:\s*(APPROVED|NEEDS_REVISION)/.test(content)
+                const missing: string[] = []
+                if (!/STATUS:\s*(APPROVED|NEEDS_REVISION)/.test(content)) missing.push('STATUS: APPROVED|NEEDS_REVISION')
+                if (!/RATING:\s*(10|[1-9])\s*\/\s*10\b/.test(content))   missing.push('RATING: N/10')
+                if (!/RATING_REASONING:\s*\S+/m.test(content))            missing.push('RATING_REASONING: <text>')
                 return {
-                    passed: hasStatus,
-                    reason: hasStatus ? undefined : 'Must contain "STATUS: APPROVED" or "STATUS: NEEDS_REVISION"'
+                    passed: missing.length === 0,
+                    reason: missing.length === 0 ? undefined : `Missing required fields: ${missing.join(', ')}`
                 }
             }
         },
@@ -106,10 +109,13 @@ export class GateValidator {
             gateName: "Execution Review Valid",
             expectedFile: "EXECUTION_REVIEW.md",
             validate: (content: string) => {
-                const hasStatus = /STATUS:\s*(APPROVED|NEEDS_REVISION)/.test(content)
+                const missing: string[] = []
+                if (!/STATUS:\s*(APPROVED|NEEDS_REVISION)/.test(content)) missing.push('STATUS: APPROVED|NEEDS_REVISION')
+                if (!/RATING:\s*(10|[1-9])\s*\/\s*10\b/.test(content))   missing.push('RATING: N/10')
+                if (!/RATING_REASONING:\s*\S+/m.test(content))            missing.push('RATING_REASONING: <text>')
                 return {
-                    passed: hasStatus,
-                    reason: hasStatus ? undefined : 'Must contain "STATUS: APPROVED" or "STATUS: NEEDS_REVISION"'
+                    passed: missing.length === 0,
+                    reason: missing.length === 0 ? undefined : `Missing required fields: ${missing.join(', ')}`
                 }
             }
         },

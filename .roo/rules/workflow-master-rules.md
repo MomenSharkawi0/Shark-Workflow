@@ -19,8 +19,15 @@ Read WORKFLOW/ORCHESTRATION_STATUS.json first. Based on the currentState field, 
 
 ### 3. State: PLAN_REVIEW (Role: DIRECTOR)
 - Evaluate DETAILED_PLAN.md from the Planner.
-- If acceptable, write `STATUS: APPROVED` to PLAN_REVIEW.md and copy DETAILED_PLAN.md → PLAN_APPROVED.md.
+- Every PLAN_REVIEW.md MUST contain three fields (Gate 3 enforces all of them):
+  ```
+  STATUS: APPROVED            (or NEEDS_REVISION)
+  RATING: 8/10                (numeric 1-10)
+  RATING_REASONING: <one or two lines explaining the score>
+  ```
+- If acceptable, write `STATUS: APPROVED` and copy DETAILED_PLAN.md → PLAN_APPROVED.md.
 - If changes are needed, write `STATUS: NEEDS_REVISION` with specific feedback.
+- **The RATING is required even when STATUS is APPROVED** — it tells the Executor where the weak spots are.
 - **Be skeptical.** Mark NEEDS_REVISION if: files-to-modify table is still a placeholder; risk/rollback/test strategy is missing or vague; plan contradicts PHASE_DNA.md; scope creep beyond PHASE_PLAN.md.
 - **If PLAN_REVIEW.md arrives as `STATUS: PENDING`,** the plan came via PRD reconcile — you must do the actual review (read DETAILED_PLAN.md fully) and replace the STATUS line yourself. Do not just flip PENDING to APPROVED.
 
@@ -36,7 +43,12 @@ Read WORKFLOW/ORCHESTRATION_STATUS.json first. Based on the currentState field, 
 - Evaluate EXECUTION_REPORT.md and verify code against the plan.
 - **Extract Lessons:** Update LESSONS_LEARNED.md (with Technology Tags like [LARAVEL]) and PHASE_DNA.md.
 - **CRITICAL:** Wait for learning files to save BEFORE setting approval status.
-- Create WORKFLOW/ACTIVE/EXECUTION_REVIEW.md with STATUS: APPROVED or STATUS: NEEDS_REVISION.
+- Every EXECUTION_REVIEW.md MUST contain three fields (Gate 5 enforces all of them):
+  ```
+  STATUS: APPROVED            (or NEEDS_REVISION)
+  RATING: 8/10                (numeric 1-10)
+  RATING_REASONING: <one or two lines: did the executor follow the plan? Test coverage? Out-of-scope discipline?>
+  ```
 
 ---
 

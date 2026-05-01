@@ -9,8 +9,21 @@
     { "id": "cli",           "label": "Command-line tool" },
     { "id": "library",       "label": "Library / package" },
     { "id": "desktop",       "label": "Desktop app" },
-    { "id": "static-site",   "label": "Static site / docs" }
+    { "id": "static-site",   "label": "Static site / docs" },
+    { "id": "game",          "label": "Game / interactive (2D / 3D)" }
   ],
+
+  "sectionApplicability": {
+    "_doc": "Which wizard sections apply to each project type. The frontend uses this to hide irrelevant sections so the user is not asked about Laravel when they are building a Pygame project.",
+    "backend":      ["web-app", "api", "monorepo"],
+    "frontend":     ["web-app", "spa", "monorepo", "static-site"],
+    "mobile":       ["mobile", "monorepo"],
+    "database":     ["web-app", "api", "monorepo", "spa", "mobile", "desktop", "cli"],
+    "auth":         ["web-app", "api", "monorepo", "spa", "mobile"],
+    "infrastructure": ["web-app", "spa", "api", "mobile", "monorepo", "cli", "library", "desktop", "static-site", "game"],
+    "game":         ["game"]
+  },
+
 
   "backend": {
     "frameworks": [
@@ -271,5 +284,60 @@
       { "id": "post-hoc", "label": "Post-hoc — write tests alongside code (default)" },
       { "id": "none",     "label": "None — no tests required (Gate 4 accepts skip marker)" }
     ]
+  },
+
+  "game": {
+    "_doc": "Game / interactive project options. Shown when projectType=game. The 'language' field on each engine drives unit-test framework selection just like the backend section does.",
+    "engines": [
+      { "id": "none",         "label": "(pick an engine below)", "language": null },
+      { "id": "pygame",       "label": "Pygame (Python — 2D, beginner-friendly)", "language": "python" },
+      { "id": "arcade",       "label": "Arcade (Python — 2D, modern API)", "language": "python" },
+      { "id": "pyglet",       "label": "Pyglet (Python — 2D/3D, OpenGL)", "language": "python" },
+      { "id": "ursina",       "label": "Ursina (Python — 3D, simple)", "language": "python" },
+      { "id": "panda3d",      "label": "Panda3D (Python — 3D, full-featured)", "language": "python" },
+      { "id": "raylib-py",    "label": "raylib-py (Python — 2D/3D bindings to raylib)", "language": "python" },
+      { "id": "kivy",         "label": "Kivy (Python — touch/mobile UI + simple games)", "language": "python" },
+      { "id": "phaser",       "label": "Phaser (JavaScript — 2D, browser)", "language": "node" },
+      { "id": "three-js",     "label": "Three.js (JavaScript — 3D, browser)", "language": "node" },
+      { "id": "babylon",      "label": "Babylon.js (JavaScript — 3D, browser)", "language": "node" },
+      { "id": "pixi",         "label": "PixiJS (JavaScript — 2D, browser)", "language": "node" },
+      { "id": "html-canvas",  "label": "HTML5 Canvas + vanilla JS (no engine)", "language": "node" },
+      { "id": "godot-gd",     "label": "Godot (GDScript — 2D/3D)", "language": "gdscript" },
+      { "id": "godot-cs",     "label": "Godot (C# — 2D/3D)", "language": "dotnet" },
+      { "id": "unity",        "label": "Unity (C# — 2D/3D)", "language": "dotnet" },
+      { "id": "monogame",     "label": "MonoGame (C# — 2D/3D)", "language": "dotnet" },
+      { "id": "love2d",       "label": "LÖVE / Love2D (Lua — 2D)", "language": "lua" },
+      { "id": "raylib-c",     "label": "raylib (C — 2D/3D)", "language": "c" },
+      { "id": "sfml",         "label": "SFML (C++ — 2D)", "language": "cpp" },
+      { "id": "bevy",         "label": "Bevy (Rust — ECS, 2D/3D)", "language": "rust" },
+      { "id": "ggez",         "label": "ggez (Rust — 2D)", "language": "rust" },
+      { "id": "macroquad",    "label": "Macroquad (Rust — 2D, beginner-friendly)", "language": "rust" }
+    ],
+    "targets": [
+      { "id": "desktop",  "label": "Desktop (Windows / macOS / Linux)" },
+      { "id": "browser",  "label": "Browser (HTML5 / WebGL)" },
+      { "id": "mobile",   "label": "Mobile (iOS / Android)" },
+      { "id": "console",  "label": "Console (Switch / PlayStation / Xbox)" },
+      { "id": "multi",    "label": "Multi-platform" }
+    ],
+    "languageVersions": {
+      "python": ["3.13", "3.12", "3.11", "3.10"],
+      "node":   ["22 LTS", "20 LTS"],
+      "dotnet": ["9", "8 LTS"],
+      "gdscript": ["Godot 4.x", "Godot 3.x"],
+      "lua":    ["5.4", "5.3"],
+      "c":      ["C99", "C11"],
+      "cpp":    ["C++20", "C++17"],
+      "rust":   ["stable", "1.83", "1.82"]
+    },
+    "extras": {
+      "pygame":  [{ "id": "pygame-zero", "label": "pygame-zero (educational wrapper)" }, { "id": "pgu", "label": "PGU (UI library)" }],
+      "arcade":  [{ "id": "pyglet-bundled", "label": "Pyglet (bundled)" }],
+      "phaser":  [{ "id": "matter-physics", "label": "Matter.js physics" }, { "id": "spine", "label": "Spine animation" }],
+      "godot-gd":[{ "id": "godot-jolt", "label": "Godot Jolt (3D physics)" }],
+      "godot-cs":[{ "id": "godot-jolt", "label": "Godot Jolt (3D physics)" }],
+      "unity":   [{ "id": "urp", "label": "URP (Universal Render Pipeline)" }, { "id": "input-system", "label": "New Input System" }, { "id": "addressables", "label": "Addressables" }],
+      "bevy":    [{ "id": "bevy-rapier", "label": "bevy_rapier (physics)" }, { "id": "bevy-egui", "label": "bevy_egui (debug UI)" }]
+    }
   }
 }

@@ -285,8 +285,9 @@ suite('06. Quality gates — negative tests', () => {
     assert.contains(r.stdout + r.stderr, 'Gate 3')
   })
 
-  test('Gate 3: PLAN_REVIEW.md with STATUS: APPROVED → EXECUTION', async () => {
-    writeFile(workspace.dir, 'WORKFLOW/ACTIVE/PLAN_REVIEW.md', '# Review\nSTATUS: APPROVED')
+  test('Gate 3: PLAN_REVIEW.md with STATUS + RATING + reasoning → EXECUTION', async () => {
+    writeFile(workspace.dir, 'WORKFLOW/ACTIVE/PLAN_REVIEW.md',
+      '# Review\nSTATUS: APPROVED\nRATING: 8/10\nRATING_REASONING: Files-to-Modify is concrete; tests well-defined.')
     writeFile(workspace.dir, 'WORKFLOW/ACTIVE/PLAN_APPROVED.md',
       '# Detailed\n\n## Files to Modify\n| File | Action |\n|---|---|\n| x.md | CREATE |\n\n## Implementation Steps\n1. Do it.')
     const r = await runOrchestrator(workspace.dir, ['-Next', '-SkipGit'])
@@ -310,8 +311,9 @@ suite('06. Quality gates — negative tests', () => {
     assert.equal(readStatus(workspace.dir).currentState, 'EXECUTION_REVIEW')
   })
 
-  test('Gate 5: EXECUTION_REVIEW.md with STATUS: APPROVED → ARCHIVE', async () => {
-    writeFile(workspace.dir, 'WORKFLOW/ACTIVE/EXECUTION_REVIEW.md', '# Review\nSTATUS: APPROVED')
+  test('Gate 5: EXECUTION_REVIEW.md with STATUS + RATING + reasoning → ARCHIVE', async () => {
+    writeFile(workspace.dir, 'WORKFLOW/ACTIVE/EXECUTION_REVIEW.md',
+      '# Review\nSTATUS: APPROVED\nRATING: 9/10\nRATING_REASONING: Plan adherence excellent; tests pass; no scope creep.')
     const r = await runOrchestrator(workspace.dir, ['-Next', '-SkipGit'])
     assert.equal(r.code, 0, `next failed: ${r.stdout}\n${r.stderr}`)
     assert.equal(readStatus(workspace.dir).currentState, 'ARCHIVE')
@@ -400,7 +402,8 @@ suite('09. 5-strike enforcement', () => {
     for (let attempt = 1; attempt <= 6 && !blocked; attempt++) {
       writeFile(workspace.dir, 'WORKFLOW/ACTIVE/DETAILED_PLAN.md', validDetailed)
       await runOrchestrator(workspace.dir, ['-Next', '-SkipGit']) // -> PLAN_REVIEW
-      writeFile(workspace.dir, 'WORKFLOW/ACTIVE/PLAN_REVIEW.md', `# Review\nSTATUS: NEEDS_REVISION\nattempt ${attempt}`)
+      writeFile(workspace.dir, 'WORKFLOW/ACTIVE/PLAN_REVIEW.md',
+        `# Review\nSTATUS: NEEDS_REVISION\nRATING: 3/10\nRATING_REASONING: attempt ${attempt} — plan still missing concrete file list.`)
       const r = await runOrchestrator(workspace.dir, ['-Next', '-SkipGit'])
       const s = readStatus(workspace.dir)
       if (s.status === 'BLOCKED') { blocked = true; break }
@@ -666,7 +669,8 @@ suite('12b. V6.1 reliability fixes', () => {
     writeFile(workspace.dir, 'WORKFLOW/ACTIVE/DETAILED_PLAN.md',
       '# Detailed\n## Files to Modify\n| File | Action |\n|---|---|\n| x.md | CREATE |\n## Implementation Steps\n1. Do.')
     await runOrchestrator(workspace.dir, ['-Next', '-SkipGit'])
-    writeFile(workspace.dir, 'WORKFLOW/ACTIVE/PLAN_REVIEW.md', '# Review\nSTATUS: APPROVED')
+    writeFile(workspace.dir, 'WORKFLOW/ACTIVE/PLAN_REVIEW.md',
+      '# Review\nSTATUS: APPROVED\nRATING: 7/10\nRATING_REASONING: Test fixture — minimal but compliant.')
     writeFile(workspace.dir, 'WORKFLOW/ACTIVE/PLAN_APPROVED.md',
       '# Approved\n## Files to Modify\n| File | Action |\n|---|---|\n| x.md | CREATE |\n## Implementation Steps\n1. Do.')
     await runOrchestrator(workspace.dir, ['-Next', '-SkipGit'])
@@ -693,7 +697,8 @@ suite('12b. V6.1 reliability fixes', () => {
     writeFile(workspace.dir, 'WORKFLOW/ACTIVE/DETAILED_PLAN.md',
       '# Detailed\n## Files to Modify\n| File | Action |\n|---|---|\n| x.md | CREATE |\n## Implementation Steps\n1. Do.')
     await runOrchestrator(workspace.dir, ['-Next', '-SkipGit'])
-    writeFile(workspace.dir, 'WORKFLOW/ACTIVE/PLAN_REVIEW.md', '# Review\nSTATUS: APPROVED')
+    writeFile(workspace.dir, 'WORKFLOW/ACTIVE/PLAN_REVIEW.md',
+      '# Review\nSTATUS: APPROVED\nRATING: 7/10\nRATING_REASONING: Test fixture — minimal but compliant.')
     writeFile(workspace.dir, 'WORKFLOW/ACTIVE/PLAN_APPROVED.md',
       '# Approved\n## Files to Modify\n| File | Action |\n|---|---|\n| x.md | CREATE |\n## Implementation Steps\n1. Do.')
     await runOrchestrator(workspace.dir, ['-Next', '-SkipGit'])
@@ -711,6 +716,58 @@ suite('12b. V6.1 reliability fixes', () => {
     assert.ok(r.body.reconciled.phaseQueue, 'phaseQueue should be present for multi-phase input')
     assert.equal(r.body.reconciled.phaseQueue.cycles.length, 3)
     assert.equal(r.body.reconciled.phaseQueue.cursor, 0)
+  })
+
+  test('Gate 3 (V6.2): rejects PLAN_REVIEW.md missing RATING', async () => {
+    await runOrchestrator(workspace.dir, ['-Reset', '-SkipGit'])
+    await runOrchestrator(workspace.dir, ['-Next', '-SkipGit'])
+    writeFile(workspace.dir, 'WORKFLOW/ACTIVE/PHASE_PLAN.md', '# Phase Plan\n\n## Phase 1: x\nGoal: y.')
+    await runOrchestrator(workspace.dir, ['-Next', '-SkipGit'])
+    writeFile(workspace.dir, 'WORKFLOW/ACTIVE/DETAILED_PLAN.md',
+      '# Detailed\n## Files to Modify\n| File | Action |\n|---|---|\n| x.md | CREATE |\n## Implementation Steps\n1. Do.')
+    await runOrchestrator(workspace.dir, ['-Next', '-SkipGit'])
+    // STATUS only, no RATING — should fail Gate 3
+    writeFile(workspace.dir, 'WORKFLOW/ACTIVE/PLAN_REVIEW.md', '# Review\nSTATUS: APPROVED')
+    const r = await runOrchestrator(workspace.dir, ['-Next', '-SkipGit'])
+    assert.notOk(r.code === 0, 'Gate 3 should reject when RATING is missing')
+    assert.contains(r.stdout + r.stderr, 'RATING')
+  })
+
+  test('Gate 5 (V6.2): rejects EXECUTION_REVIEW.md missing RATING_REASONING', async () => {
+    // Walk to EXECUTION_REVIEW
+    await runOrchestrator(workspace.dir, ['-Reset', '-SkipGit'])
+    await runOrchestrator(workspace.dir, ['-Next', '-SkipGit'])
+    writeFile(workspace.dir, 'WORKFLOW/ACTIVE/PHASE_PLAN.md', '# Phase Plan\n\n## Phase 1: x\nGoal: y.')
+    await runOrchestrator(workspace.dir, ['-Next', '-SkipGit'])
+    writeFile(workspace.dir, 'WORKFLOW/ACTIVE/DETAILED_PLAN.md',
+      '# Detailed\n## Files to Modify\n| File | Action |\n|---|---|\n| x.md | CREATE |\n## Implementation Steps\n1. Do.')
+    await runOrchestrator(workspace.dir, ['-Next', '-SkipGit'])
+    writeFile(workspace.dir, 'WORKFLOW/ACTIVE/PLAN_REVIEW.md',
+      '# Review\nSTATUS: APPROVED\nRATING: 8/10\nRATING_REASONING: solid')
+    writeFile(workspace.dir, 'WORKFLOW/ACTIVE/PLAN_APPROVED.md',
+      '# Approved\n## Files to Modify\n| File | Action |\n|---|---|\n| x.md | CREATE |\n## Implementation Steps\n1. Do.')
+    await runOrchestrator(workspace.dir, ['-Next', '-SkipGit'])
+    writeFile(workspace.dir, 'WORKFLOW/ACTIVE/EXECUTION_REPORT.md',
+      '# Report\n\n## Files Modified\n- x.md\n\n## Tests Run\nAll green.')
+    await runOrchestrator(workspace.dir, ['-Next', '-SkipGit'])
+    // STATUS + RATING but no RATING_REASONING — should fail Gate 5
+    writeFile(workspace.dir, 'WORKFLOW/ACTIVE/EXECUTION_REVIEW.md',
+      '# Review\nSTATUS: APPROVED\nRATING: 8/10')
+    const r = await runOrchestrator(workspace.dir, ['-Next', '-SkipGit'])
+    assert.notOk(r.code === 0, 'Gate 5 should reject when RATING_REASONING is missing')
+    assert.contains(r.stdout + r.stderr, 'RATING_REASONING')
+  })
+
+  test('Wizard: game project type + Pygame engine in wizard-options.json', async () => {
+    const r = await http(`${dashboard.base}/api/wizard/options`)
+    assert.status(r, 200)
+    const types = r.body.projectTypes.map((t) => t.id)
+    assert.ok(types.includes('game'), `projectTypes should include "game", got: ${types.join(',')}`)
+    assert.ok(r.body.game, 'game section should exist in wizard-options')
+    const engineIds = r.body.game.engines.map((e) => e.id)
+    assert.ok(engineIds.includes('pygame'), `game.engines should include pygame, got: ${engineIds.join(',')}`)
+    assert.ok(engineIds.includes('godot-gd'), `game.engines should include godot-gd`)
+    assert.ok(r.body.sectionApplicability && r.body.sectionApplicability.game, 'sectionApplicability.game should be defined')
   })
 })
 

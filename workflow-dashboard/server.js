@@ -862,6 +862,17 @@ function buildFeatureRequest(cfg) {
     if (m.extras && m.extras.length) blocks.push(['Mobile extras', m.extras.join(', ')]);
   }
 
+  // Game (V6.2) — surface engine + target so the Director writes a
+  // game-appropriate PHASE_PLAN instead of inventing a backend stack.
+  if (cfg.game && cfg.game.engine) {
+    const g = cfg.game;
+    const parts = [g.engine];
+    if (g.languageVersion) parts.push(`(${g.language || ''} ${g.languageVersion})`.trim());
+    blocks.push(['Game engine', parts.join(' ')]);
+    if (g.target)  blocks.push(['Target platform', g.target]);
+    if (g.extras && g.extras.length) blocks.push(['Engine extras', g.extras.join(', ')]);
+  }
+
   if (cfg.database && cfg.database.primary && cfg.database.primary !== 'none') {
     const d = cfg.database;
     blocks.push(['Primary database', d.primary]);
@@ -932,6 +943,7 @@ app.post('/api/wizard/start', async (req, res) => {
     cfg.backend && cfg.backend.framework  && cfg.backend.framework  !== 'none' && cfg.backend.framework,
     cfg.frontend && cfg.frontend.framework && cfg.frontend.framework !== 'none' && cfg.frontend.framework,
     cfg.mobile && cfg.mobile.framework   && cfg.mobile.framework   !== 'none' && cfg.mobile.framework,
+    cfg.game && cfg.game.engine          && cfg.game.engine,
     cfg.database && cfg.database.primary && cfg.database.primary !== 'none' && cfg.database.primary,
   ].filter(Boolean).join(' + ');
 
