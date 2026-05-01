@@ -232,27 +232,27 @@ export class WorkflowBridge {
                         const result = await this.engine.startCycle(message)
                         success = !!result.success
                         routingNote = success
-                            ? '🚀 Workflow cycle started. Switching to Director mode and beginning PHASE_PLANNING.'
-                            : `❌ Failed to start cycle: ${result.error || 'unknown error'}`
+                            ? 'Workflow cycle started. Switching to Director mode and beginning PHASE_PLANNING.'
+                            : `Failed to start cycle: ${result.error || 'unknown error'}`
                     } else {
                         const currentTask = this.provider.getCurrentTask ? this.provider.getCurrentTask() : null
                         if (currentTask && this.provider.postMessageToWebview) {
                             await this.provider.postMessageToWebview({ type: "invoke", invoke: "sendMessage", text: message })
                             success = true
-                            routingNote = '✅ Message delivered to active task.'
+                            routingNote = 'Message delivered to active task.'
                         } else if (this.provider.createTask) {
                             await this.provider.createTask(message)
                             success = true
-                            routingNote = '✅ Message delivered as a new task.'
+                            routingNote = 'Message delivered as a new task.'
                         } else {
-                            routingNote = '❌ No active task and createTask is unavailable.'
+                            routingNote = 'No active task and createTask is unavailable.'
                         }
                     }
 
                     const agentMsg = {
                         id: `msg_${++this.chatIdCounter}`,
                         role: 'agent',
-                        content: routingNote || (success ? '✅ Delivered.' : '❌ Failed.'),
+                        content: routingNote || (success ? 'Delivered.' : 'Failed.'),
                         timestamp: new Date().toISOString(), status: success ? 'delivered' : 'failed'
                     }
                     this.chatHistory.push(agentMsg)

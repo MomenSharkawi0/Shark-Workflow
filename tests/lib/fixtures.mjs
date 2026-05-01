@@ -25,9 +25,18 @@ export function makeTempWorkspace() {
   }
 }
 
-/** Boot the dashboard server on a random free port. Returns the controller. */
+/** Boot the dashboard server on a random free port. Returns the controller.
+ *  We point BRIDGE_BASE at a guaranteed-unused port so the bridge-offline
+ *  test assertions are deterministic regardless of whether the user happens
+ *  to have VS Code (and the real bridge on :3001) open while running tests.
+ */
 export async function bootDashboard({ cwd, port }) {
-  const env = { ...process.env, PORT: String(port), HOST: '127.0.0.1' }
+  const env = {
+    ...process.env,
+    PORT: String(port),
+    HOST: '127.0.0.1',
+    BRIDGE_BASE: 'http://127.0.0.1:1',  // port 1 is always closed → connection refused
+  }
   const proc = spawn(process.execPath, [join(cwd, 'workflow-dashboard', 'server.js')], {
     cwd, env, stdio: ['ignore', 'pipe', 'pipe']
   })

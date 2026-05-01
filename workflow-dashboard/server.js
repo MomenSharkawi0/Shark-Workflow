@@ -472,7 +472,9 @@ app.post('/api/plan', async (req, res) => { res.json(await runOrchestrator('-Pla
 // These are no-ops if the Roo Code extension isn't running.
 // ============================================================================
 
-const BRIDGE_BASE = 'http://127.0.0.1:3001';
+// Bridge URL is overridable via BRIDGE_BASE env var so tests can point at a
+// guaranteed-unused port and assert the "bridge offline" code paths.
+const BRIDGE_BASE = process.env.BRIDGE_BASE || 'http://127.0.0.1:3001';
 
 async function proxyToBridge(req, res, bridgePath, opts = {}) {
   try {

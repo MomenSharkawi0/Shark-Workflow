@@ -21,7 +21,7 @@ const PROMPTS = {
   'EXECUTION': 'Switch to Executor mode. Read WORKFLOW/ACTIVE/PLAN_APPROVED.md and implement EXACTLY what is planned. Run tests after every change. Write WORKFLOW/ACTIVE/EXECUTION_REPORT.md with results. When done, tell the user to run orchestrator.ps1 -Next.',
   'EXECUTION_REVIEW': 'Switch to Director mode. Read WORKFLOW/ACTIVE/EXECUTION_REPORT.md and WORKFLOW/ACTIVE/EXECUTION_DIFF.diff. FIRST update LESSONS_LEARNED.md and PHASE_DNA.md with learnings. THEN write WORKFLOW/ACTIVE/EXECUTION_REVIEW.md with STATUS: APPROVED or NEEDS_REVISION. When done, tell the user to run orchestrator.ps1 -Next.',
   'ARCHIVE': 'Switch to Director mode. Read all WORKFLOW/ACTIVE/*.md files. Verify LESSONS_LEARNED.md and PHASE_DNA.md are up to date. Do NOT move files. Then tell the user to run orchestrator.ps1 -Next.',
-  'COMPLETE': '✅ Workflow complete! All files have been archived. Use "Reset Workflow" to start a new feature cycle.'
+  'COMPLETE': 'Workflow complete. All files have been archived. Use "Reset Workflow" to start a new feature cycle.'
 };
 
 // ============================================================================
@@ -163,7 +163,8 @@ function buildStepper(activeState) {
 
     const dot = document.createElement('div');
     dot.className = 'step-dot ' + status;
-    dot.innerHTML = `<span>${i < idx ? '✓' : (i + 1)}</span>`;
+    // Use a CSS-rendered tick for completed steps; ASCII-safe in the markup itself.
+    dot.innerHTML = `<span>${i < idx ? '&#10003;' : (i + 1)}</span>`;
     dot.title = s;
 
     const label = document.createElement('span');
@@ -202,7 +203,7 @@ function addActivityEntry(entry) {
     fail: 'var(--accent-red)', gate: 'var(--accent-indigo)'
   };
   const levelIcons = {
-    ok: '✓', info: 'ℹ', warn: '⚠', fail: '✗', gate: '🛡', command: '⌘', log: '›'
+    ok: 'OK', info: 'i', warn: '!', fail: 'X', gate: 'G', command: '$', log: '>'
   };
 
   const color = levelColors[entry.level] || 'var(--text-dim)';
@@ -286,8 +287,8 @@ function updateProgressRing(data) {
 
   // Confidence
   if (data.completedCycles > 0) {
-    const confEmoji = { high: '🟢', medium: '🟡', low: '🔴' };
-    confEl.textContent = `${confEmoji[data.confidence] || '⚪'} ${data.confidence} conf. (${data.completedCycles} cycles)`;
+    const confLabel = { high: 'HIGH', medium: 'MED', low: 'LOW' };
+    confEl.textContent = `${confLabel[data.confidence] || '?'} confidence (${data.completedCycles} cycles)`;
   } else {
     confEl.textContent = 'No historical data';
   }
@@ -362,7 +363,7 @@ function addChatBubble(msg, scroll = true) {
   row.className = `chat-row ${isUser ? 'chat-row-user' : 'chat-row-agent'}`;
 
   const statusClass = msg.status || 'sent';
-  const statusIcon = { delivered: '✓✓', failed: '✗', sent: '✓' };
+  const statusIcon = { delivered: 'sent', failed: 'failed', sent: 'queued' };
 
   row.innerHTML = `
     <div class="chat-bubble ${isUser ? 'chat-bubble-user' : 'chat-bubble-agent'}">
@@ -418,9 +419,9 @@ async function sendChatMessage() {
     });
     const data = await res.json();
     if (data.success) {
-      setFeedback('Message sent ✓');
+      setFeedback('Message sent');
     } else {
-      setFeedback('Send failed ✗');
+      setFeedback('Send failed');
     }
   } catch (err) {
     setFeedback('Network error');
@@ -530,7 +531,7 @@ async function runAction(btnId, label, endpoint) {
     if (data.stdout) appendConsole(data.stdout, false);
     if (data.stderr) appendConsole(data.stderr, true);
     if (data.error) appendConsole('ERROR: ' + data.error, true);
-    setFeedback(data.success ? `${label} complete ✓` : `${label} failed ✗`);
+    setFeedback(data.success ? `${label} complete` : `${label} failed`);
   } catch (e) {
     appendConsole('Network error: ' + e.message, true);
     setFeedback('Network error');
@@ -596,7 +597,7 @@ async function sendPromptToAgent() {
       body: JSON.stringify({ message: text })
     });
     const data = await res.json();
-    setFeedback(data.success ? 'Prompt sent to agent ✓' : 'Failed to send ✗');
+    setFeedback(data.success ? 'Prompt sent to agent' : 'Failed to send');
   } catch {
     setFeedback('Network error');
   }
@@ -649,15 +650,15 @@ async function startNewCycle() {
     });
     const data = await res.json();
     if (res.ok && data.success) {
-      setStartFeedback('🚀 Cycle started. Switching to Director and beginning PHASE_PLANNING.', 'ok');
+      setStartFeedback('Cycle started. Switching to Director and beginning PHASE_PLANNING.', 'ok');
       inputEl.value = '';
       // Refresh current mode display shortly after
       setTimeout(refreshCurrentMode, 800);
     } else {
-      setStartFeedback(`❌ ${data.error || 'Failed to start cycle (is the Roo Code extension running?)'}`, 'fail');
+      setStartFeedback(`Failed: ${data.error || 'could not start cycle (is the Roo Code extension running?)'}`, 'fail');
     }
   } catch (err) {
-    setStartFeedback('❌ Bridge unreachable. Open VS Code with the Roo Code extension.', 'fail');
+    setStartFeedback('Bridge unreachable. Open VS Code with the Roo Code extension.', 'fail');
   } finally {
     btn.classList.remove('btn-loading');
     btn.querySelector('span').textContent = 'Start Workflow';
@@ -671,23 +672,23 @@ async function abortCurrentCycle() {
   try {
     const res = await fetch('/api/cycle/abort', { method: 'POST', headers: { 'Content-Type': 'application/json' } });
     const data = await res.json();
-    setStartFeedback(res.ok ? 'Cycle aborted.' : `❌ ${data.error || 'Abort failed'}`, res.ok ? 'ok' : 'fail');
+    setStartFeedback(res.ok ? 'Cycle aborted.' : `Abort failed: ${data.error || 'unknown error'}`, res.ok ? 'ok' : 'fail');
   } catch {
-    setStartFeedback('❌ Bridge unreachable.', 'fail');
+    setStartFeedback('Bridge unreachable.', 'fail');
   } finally {
     btn.classList.remove('btn-loading');
   }
 }
 
 const MODE_LABELS = {
-  'director': '🎯 Director',
-  'planner': '📋 Planner',
-  'executor': '⚙️ Executor',
-  'workflow-master': '🚀 Workflow Master',
-  'code': '💻 Code (Roo default)',
-  'ask': '❓ Ask (Roo default)',
-  'architect': '🏛️ Architect (Roo default)',
-  'debug': '🐛 Debug (Roo default)',
+  'director': 'Director',
+  'planner': 'Planner',
+  'executor': 'Executor',
+  'workflow-master': 'Workflow Master',
+  'code': 'Code (Roo default)',
+  'ask': 'Ask (Roo default)',
+  'architect': 'Architect (Roo default)',
+  'debug': 'Debug (Roo default)',
 };
 
 async function switchMode(mode) {
@@ -707,11 +708,11 @@ async function switchMode(mode) {
       const labelEl = document.getElementById('currentModeLabel');
       if (labelEl) labelEl.textContent = MODE_LABELS[mode] || mode;
     } else {
-      fb.textContent = `❌ ${data.error || 'Switch failed.'}`;
+      fb.textContent = `Switch failed: ${data.error || 'unknown error'}`;
       fb.style.color = 'var(--accent-red, #ef4444)';
     }
   } catch {
-    fb.textContent = '❌ Bridge unreachable. Is Roo Code running?';
+    fb.textContent = 'Bridge unreachable. Is Roo Code running?';
     fb.style.color = 'var(--accent-red, #ef4444)';
   }
 }
@@ -959,7 +960,7 @@ async function previewWizardRequest() {
     const pre = $('wizPreview');
     pre.style.display = 'block';
     pre.textContent = md;
-    setWizFeedback(res.ok ? '✓ Cycle started. Preview shown below.' : 'Preview shown (cycle did not start: ' + (data.error || res.status) + ').', res.ok ? 'ok' : 'fail');
+    setWizFeedback(res.ok ? 'Cycle started. Preview shown below.' : 'Preview shown (cycle did not start: ' + (data.error || res.status) + ').', res.ok ? 'ok' : 'fail');
   } catch (err) {
     setWizFeedback('Bridge unreachable: ' + err.message, 'fail');
   }
@@ -981,15 +982,15 @@ async function startWizardCycle() {
     });
     const data = await res.json();
     if (res.ok && data.success) {
-      setWizFeedback('🚀 Cycle started — switching to Director and beginning PHASE_PLANNING. Preview below shows the FEATURE_REQUEST the Director will use.', 'ok');
+      setWizFeedback('Cycle started. Switching to Director and beginning PHASE_PLANNING. Preview below shows the FEATURE_REQUEST the Director will use.', 'ok');
       const pre = $('wizPreview'); pre.style.display = 'block'; pre.textContent = data.generatedFeatureRequest || '';
       setTimeout(refreshCurrentMode, 500);
       setTimeout(refreshDoctor, 800);
     } else {
-      setWizFeedback('❌ ' + (data.error || 'Failed to start cycle (is the Roo Code extension running?)'), 'fail');
+      setWizFeedback('Failed to start cycle: ' + (data.error || 'is the Roo Code extension running?'), 'fail');
     }
   } catch (err) {
-    setWizFeedback('❌ Bridge unreachable: ' + err.message, 'fail');
+    setWizFeedback('Bridge unreachable: ' + err.message, 'fail');
   } finally {
     btn.classList.remove('btn-loading');
   }
@@ -1097,7 +1098,7 @@ async function fetchGates() {
     container.innerHTML = data.gates.slice(-10).reverse().map(g => {
       const isPass = g.result && g.result.includes('PASS');
       const color = isPass ? '#34d399' : '#f87171';
-      const icon = isPass ? '✓' : '✗';
+      const icon = isPass ? 'OK' : 'FAIL';
       return `<div class="gate-row">
         <span style="color:${color};font-weight:700;width:1rem">${icon}</span>
         <span class="text-dim" style="width:7rem;flex-shrink:0">${g.timestamp || ''}</span>

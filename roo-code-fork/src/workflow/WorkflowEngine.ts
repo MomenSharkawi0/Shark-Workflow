@@ -445,7 +445,7 @@ export class WorkflowEngine {
         if (nextPhase === "COMPLETE") {
             this.state.isRunning = false
             this.stopAutopilotLoop()
-            this.emit("info", "🎉 Workflow cycle COMPLETE!")
+            this.emit("info", "Workflow cycle COMPLETE.")
             this.archiveActiveFiles()
         }
 
@@ -799,7 +799,7 @@ Respond with ONLY a valid JSON object, no other text:
 
     private startAutopilotLoop(): void {
         this.stopAutopilotLoop()
-        this.emit("info", "🤖 Autopilot loop started")
+        this.emit("info", "Autopilot loop started.")
 
         // Watch for expected output files
         this.fileWatchInterval = setInterval(async () => {
