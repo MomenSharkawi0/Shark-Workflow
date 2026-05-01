@@ -15,6 +15,8 @@ const cors = require('cors');
 const fs = require('fs');
 const path = require('path');
 const { exec } = require('child_process');
+const { interpret: interpretPrd } = require('./lib/prdInterpreter');
+const { reconcileToPlan, reconcileToFeatureRequest } = require('./lib/planReconciler');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -503,6 +505,66 @@ app.post('/api/autonomy',     (req, res) => proxyToBridge(req, res, '/api/autono
 app.post('/api/mode/switch',  (req, res) => proxyToBridge(req, res, '/api/mode/switch'));
 app.get('/api/mode/current',  (req, res) => proxyToBridge(req, res, '/api/mode/current', { method: 'GET' }));
 
+// V6 Phase C — model routing (proxies to bridge for live registry; persists locally)
+app.get('/api/models/list',      (req, res) => proxyToBridge(req, res, '/api/models/list', { method: 'GET' }));
+app.get('/api/models/recommend', (req, res) => proxyToBridge(req, res, '/api/models/recommend', { method: 'GET' }));
+
+// /api/config/models — persisted in WORKFLOW/workflow-config.json (single source of truth)
+const WORKFLOW_CONFIG_PATH = path.join(WORKFLOW_DIR, 'workflow-config.json');
+
+app.get('/api/config/models', (req, res) => {
+  try {
+    if (!fs.existsSync(WORKFLOW_CONFIG_PATH)) {
+      return res.json({ perPhaseModels: false, modelByMode: {} });
+    }
+    const cfg = parseJsonSafe(fs.readFileSync(WORKFLOW_CONFIG_PATH, 'utf-8'));
+    res.json({
+      perPhaseModels: !!cfg.perPhaseModels,
+      modelByMode: cfg.modelByMode || {},
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/config/models', (req, res) => {
+  try {
+    const { perPhaseModels, modelByMode } = req.body || {};
+    if (typeof perPhaseModels !== 'boolean') {
+      return res.status(400).json({ error: 'perPhaseModels must be boolean' });
+    }
+    if (modelByMode !== undefined && (typeof modelByMode !== 'object' || Array.isArray(modelByMode))) {
+      return res.status(400).json({ error: 'modelByMode must be an object map' });
+    }
+    // Light validation: each mode entry must be {modelId, provider?}
+    const modes = ['director', 'planner', 'executor', 'reviewer', 'workflow-master'];
+    const sanitized = {};
+    for (const m of modes) {
+      const e = (modelByMode || {})[m];
+      if (!e) continue;
+      if (typeof e.modelId !== 'string' || !e.modelId.trim()) {
+        return res.status(400).json({ error: `modelByMode.${m}.modelId must be a non-empty string` });
+      }
+      sanitized[m] = { modelId: e.modelId.trim() };
+      if (e.provider && typeof e.provider === 'string') sanitized[m].provider = e.provider.trim();
+    }
+    // Read existing config (if any), merge, write atomically
+    let existing = {};
+    if (fs.existsSync(WORKFLOW_CONFIG_PATH)) {
+      try { existing = parseJsonSafe(fs.readFileSync(WORKFLOW_CONFIG_PATH, 'utf-8')); } catch {}
+    }
+    const merged = { ...existing, perPhaseModels, modelByMode: sanitized };
+    if (!fs.existsSync(WORKFLOW_DIR)) fs.mkdirSync(WORKFLOW_DIR, { recursive: true });
+    const tmp = WORKFLOW_CONFIG_PATH + '.tmp';
+    fs.writeFileSync(tmp, JSON.stringify(merged, null, 2), 'utf-8');
+    fs.renameSync(tmp, WORKFLOW_CONFIG_PATH);
+    logActivity('config', `Model routing updated (perPhaseModels=${perPhaseModels}, ${Object.keys(sanitized).length} overrides)`, 'ok');
+    res.json({ success: true, perPhaseModels, modelByMode: sanitized });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // A11: coordinate autopilot writes with the orchestrator's lock so we don't clobber
 // an in-flight `-Next` transition. Same lock semantics as orchestrator.ps1 (60s stale).
 function acquireLockOrFail() {
@@ -595,6 +657,103 @@ app.post('/api/inject-plan', (req, res) => {
     logActivity('inject', `Injected ${fileName}`, 'ok');
     res.json({ success: true, message: `Injected ${fileName}` });
   } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ============================================================================
+// PRD INGESTION (V6 Phase A)
+//   POST /api/ingest/prd     — heuristic interpret + optional reconcile
+//   GET  /api/ingest/sample  — returns the orphaned HR_Platform_PRD.md
+//
+// The heuristic interpreter is dependency-free and always runs. The bridge's
+// LLM-backed `/api/ingest/interpret` is invoked only when confidence < 0.6
+// AND the bridge is reachable, mirroring how the dashboard gracefully
+// degrades when the Roo Code extension isn't running.
+// ============================================================================
+
+const MAX_INGEST_BYTES = 1024 * 1024; // 1 MB
+const HR_PRD_PATH = path.join(__dirname, '..', 'HR_Platform_PRD.md');
+
+app.post('/api/ingest/prd', async (req, res) => {
+  try {
+    const { markdown, mode } = req.body || {};
+    if (typeof markdown !== 'string' || !markdown.trim()) {
+      return res.status(400).json({ error: 'markdown is required' });
+    }
+    if (Buffer.byteLength(markdown, 'utf-8') > MAX_INGEST_BYTES) {
+      return res.status(413).json({ error: `markdown exceeds ${MAX_INGEST_BYTES} bytes` });
+    }
+    const ingestMode = mode === 'reconcile' ? 'reconcile' : 'interpret';
+
+    // 1. Heuristic pass — always free, always runs.
+    const local = interpretPrd(markdown);
+    let merged = local.fields;
+    let aggregateConfidence = local.confidence;
+
+    // 2. LLM uplift — only when heuristics returned weak signal AND the bridge
+    //    is reachable. Failure is non-fatal; we always have the heuristic result.
+    if (local.confidence < 0.6) {
+      try {
+        const bridgeRes = await fetch(`${BRIDGE_BASE}/api/ingest/interpret`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ markdown }),
+        });
+        if (bridgeRes.ok) {
+          const llm = await bridgeRes.json().catch(() => null);
+          if (llm && llm.fields) {
+            // Take whichever field has higher confidence; LLM tends to win on summaries.
+            const fields = ['projectName', 'projectType', 'summary', 'dataModel', 'constraints', 'successCriteria'];
+            for (const f of fields) {
+              const localF = merged[f];
+              const llmF = llm.fields[f];
+              if (llmF && llmF.value && (!localF || localF.confidence < llmF.confidence)) {
+                merged[f] = { value: String(llmF.value), confidence: Number(llmF.confidence) || 0.7 };
+              }
+            }
+            if (llm.fields.stackHints && Array.isArray(llm.fields.stackHints.value)) {
+              const combined = new Set([...(merged.stackHints.value || []), ...llm.fields.stackHints.value]);
+              merged.stackHints = {
+                value: Array.from(combined),
+                confidence: Math.max(merged.stackHints.confidence || 0, llm.fields.stackHints.confidence || 0.7),
+              };
+            }
+            aggregateConfidence = Math.max(aggregateConfidence, llm.confidence || 0);
+          }
+        }
+      } catch {
+        /* bridge offline — heuristic result stands */
+      }
+    }
+
+    const payload = {
+      kind: local.classification.kind,
+      signals: local.classification.signals,
+      confidence: aggregateConfidence,
+      fields: merged,
+    };
+
+    if (ingestMode === 'reconcile') {
+      payload.reconciled = reconcileToPlan(markdown, merged);
+      payload.featureRequest = reconcileToFeatureRequest(merged, markdown);
+    }
+
+    logActivity('ingest', `PRD ingest (${ingestMode}, kind=${payload.kind}, conf=${aggregateConfidence.toFixed(2)})`, 'ok');
+    res.json(payload);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/ingest/sample', (req, res) => {
+  try {
+    if (!fs.existsSync(HR_PRD_PATH)) {
+      return res.status(404).json({ error: 'HR_Platform_PRD.md not found at repo root' });
+    }
+    const markdown = fs.readFileSync(HR_PRD_PATH, 'utf-8');
+    res.json({ markdown, source: 'HR_Platform_PRD.md' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ============================================================================
@@ -729,6 +888,17 @@ app.post('/api/wizard/start', async (req, res) => {
     autonomy: cfg.autonomy || 'semi-auto',
     stack: stackSummary || undefined,
   };
+
+  // V6 Phase A: pass-through PRD-ingest extras when present
+  if (typeof cfg.prefilledFeatureRequest === 'string' && cfg.prefilledFeatureRequest.trim()) {
+    proxyBody.prefilledFeatureRequest = cfg.prefilledFeatureRequest;
+  }
+  if (cfg.reconciledPlan && typeof cfg.reconciledPlan === 'object' &&
+      typeof cfg.reconciledPlan.phasePlan === 'string' &&
+      typeof cfg.reconciledPlan.detailedPlan === 'string' &&
+      typeof cfg.reconciledPlan.planReview === 'string') {
+    proxyBody.reconciledPlan = cfg.reconciledPlan;
+  }
 
   try {
     const r = await fetch(`${BRIDGE_BASE}/api/cycle/start`, {

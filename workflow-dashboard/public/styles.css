@@ -388,6 +388,59 @@ textarea.wiz-input { resize: vertical; min-height: 4.2rem; line-height: 1.5; }
    Need higher specificity than `textarea.wiz-input { min-height: 4.2rem }`. */
 textarea.wiz-input.wiz-textarea-tall { min-height: 8.5rem; }
 
+/* V6 Phase A — Import PRD interpreted-fields grid */
+.ingest-fields {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.5rem;
+}
+@media (max-width: 760px) { .ingest-fields { grid-template-columns: 1fr; } }
+.ingest-field {
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 0.55rem 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+.ingest-field-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.ingest-field-label {
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+}
+.ingest-field-value {
+  font-size: 0.82rem;
+  color: var(--text-primary);
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 6rem;
+  overflow-y: auto;
+}
+.ingest-field-value.empty { color: var(--text-muted); font-style: italic; }
+.ingest-confidence-pill {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.65rem;
+  font-weight: 600;
+  padding: 0.1rem 0.45rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  letter-spacing: 0.04em;
+}
+.ingest-confidence-pill.hi  { background: rgba(34,197,94,0.10); color: var(--ok);   border-color: rgba(34,197,94,0.30); }
+.ingest-confidence-pill.med { background: rgba(212,160,23,0.10); color: var(--warn); border-color: rgba(212,160,23,0.30); }
+.ingest-confidence-pill.lo  { background: var(--bg-input); color: var(--text-muted); border-color: var(--border-default); }
+
 #wizardCard .section-label { user-select: none; }
 #wizardToggleHint { font-weight: 500; color: var(--text-muted); }
 

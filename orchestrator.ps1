@@ -1747,61 +1747,61 @@ try {
         Invoke-ResumeExecution
     }
     elseif ($InjectPlan) {
-        Write-Host "`n=== INJECTING EXTERNAL PLAN ===" -ForegroundColor Cyan
+        Write-Host "`n=== INJECTING EXTERNAL PLAN (V6 reconciled) ===" -ForegroundColor Cyan
 
         # 1. Validate file exists
         if (-not (Test-Path $InjectPlan)) {
             throw "The specified plan file does not exist: $InjectPlan"
         }
-
         Write-Host "Source: $InjectPlan" -ForegroundColor Gray
 
         # 2. Clean ACTIVE directory (except QUALITY_GATES.md)
         if (Test-Path $ActiveDir) {
             $staleFiles = Get-ChildItem -Path $ActiveDir -File | Where-Object { $_.Name -ne "QUALITY_GATES.md" }
-            foreach ($file in $staleFiles) {
-                Remove-Item -Path $file.FullName -Force
-            }
+            foreach ($file in $staleFiles) { Remove-Item -Path $file.FullName -Force }
             Write-Host "  Cleaned ACTIVE directory." -ForegroundColor Green
         }
 
-        # 3. Copy injected file to PLAN_APPROVED.md
-        $destPath = Join-Path $ActiveDir "PLAN_APPROVED.md"
-        Copy-Item -Path $InjectPlan -Destination $destPath -Force
-        Write-Host "  Copied to: PLAN_APPROVED.md" -ForegroundColor Green
+        # 3. Try to call the dashboard's /api/ingest/prd?mode=reconcile endpoint.
+        #    The reconciler preserves the user's original markdown verbatim under
+        #    `## Original Plan` AND produces gate-compliant headings — replacing
+        #    the legacy hard-coded dummies that lost user intent.
+        $sourceMarkdown = Get-Content -Path $InjectPlan -Raw -Encoding UTF8
+        $reconciled = $null
+        $dashboardUrl = "http://127.0.0.1:3000/api/ingest/prd"
+        try {
+            $bodyJson = @{ markdown = $sourceMarkdown; mode = "reconcile" } | ConvertTo-Json -Compress -Depth 4
+            $resp = Invoke-WebRequest -Uri $dashboardUrl -Method Post -ContentType "application/json" `
+                -Body $bodyJson -TimeoutSec 10 -UseBasicParsing -ErrorAction Stop
+            $payload = $resp.Content | ConvertFrom-Json
+            if ($payload.reconciled -and $payload.reconciled.phasePlan -and $payload.reconciled.detailedPlan -and $payload.reconciled.planReview) {
+                $reconciled = $payload.reconciled
+                Write-Host "  Reconciled via dashboard (kind=$($payload.kind), confidence=$([math]::Round($payload.confidence, 2)))" -ForegroundColor Green
+            }
+        }
+        catch {
+            Write-Log -Level WARN -Message "Dashboard not reachable at $dashboardUrl ($($_.Exception.Message)). Falling back to legacy dummy-file injection."
+        }
 
-        # 4. Generate dummy files for gates
-        $dummyPhase = @"
-# Phase Plan
-## Phase 1: Injected
-Goal: Injected externally.
-Scope: All.
-Dependencies: None.
-Success Criteria: Executed.
-"@
-        Set-Content -Path (Join-Path $ActiveDir "PHASE_PLAN.md") -Value $dummyPhase
-
-        $dummyDetailed = @"
-# Detailed Plan
-## Summary
-Injected externally.
-## Files to Modify
-| File | Action |
-|------|--------|
-| .    | MODIFY |
-## Implementation Steps
-Injected.
-"@
-        Set-Content -Path (Join-Path $ActiveDir "DETAILED_PLAN.md") -Value $dummyDetailed
-
-        $dummyReview = @"
-# Plan Review
-STATUS: APPROVED
-Plan injected successfully via -InjectPlan.
-"@
-        Set-Content -Path (Join-Path $ActiveDir "PLAN_REVIEW.md") -Value $dummyReview
-
-        Write-Host "  Generated dummy files for Quality Gates 1, 2, and 3." -ForegroundColor Green
+        if ($reconciled) {
+            # 4a. V6 path — use reconciled triplet, preserves original under ## Original Plan
+            Set-Content -Path (Join-Path $ActiveDir "PHASE_PLAN.md")    -Value $reconciled.phasePlan    -Encoding UTF8
+            Set-Content -Path (Join-Path $ActiveDir "DETAILED_PLAN.md") -Value $reconciled.detailedPlan -Encoding UTF8
+            Set-Content -Path (Join-Path $ActiveDir "PLAN_REVIEW.md")   -Value $reconciled.planReview   -Encoding UTF8
+            Set-Content -Path (Join-Path $ActiveDir "PLAN_APPROVED.md") -Value $reconciled.detailedPlan -Encoding UTF8
+            Write-Host "  Wrote reconciled PHASE_PLAN.md, DETAILED_PLAN.md, PLAN_REVIEW.md (APPROVED), PLAN_APPROVED.md" -ForegroundColor Green
+        }
+        else {
+            # 4b. Legacy fallback — only when the dashboard isn't running.
+            Copy-Item -Path $InjectPlan -Destination (Join-Path $ActiveDir "PLAN_APPROVED.md") -Force
+            $dummyPhase = "# Phase Plan`n`n## Phase 1: Injected`nGoal: Injected externally (legacy fallback).`nScope: All.`nDependencies: None.`nSuccess Criteria: Executed.`n"
+            Set-Content -Path (Join-Path $ActiveDir "PHASE_PLAN.md") -Value $dummyPhase -Encoding UTF8
+            $dummyDetailed = "# Detailed Plan`n## Summary`nInjected externally (legacy fallback).`n## Files to Modify`n| File | Action |`n|------|--------|`n| .    | MODIFY |`n## Implementation Steps`nSee PLAN_APPROVED.md for the original source.`n"
+            Set-Content -Path (Join-Path $ActiveDir "DETAILED_PLAN.md") -Value $dummyDetailed -Encoding UTF8
+            $dummyReview = "# Plan Review`nSTATUS: APPROVED`nPlan injected via -InjectPlan (legacy fallback path; dashboard offline).`n"
+            Set-Content -Path (Join-Path $ActiveDir "PLAN_REVIEW.md") -Value $dummyReview -Encoding UTF8
+            Write-Log -Level WARN -Message "Used legacy dummy-file injection. Start the dashboard (npm start --prefix workflow-dashboard) to enable V6 reconciliation that preserves your original plan."
+        }
 
         # 5. Run pre-flight check before jumping into EXECUTION
         Invoke-PreflightCheck
@@ -1809,10 +1809,8 @@ Plan injected successfully via -InjectPlan.
         # 6. Update Status
         $currentState = Get-CurrentState
         $statusData = Get-StatusData -State $currentState
-
         $nextConfig = $StateConfigs["EXECUTION"]
         $transitionCount = [int]$statusData["Transition Count"] + 3
-
         $newCycleId = [guid]::NewGuid().ToString().Substring(0,8)
         Write-StatusFile -State "EXECUTION" `
             -PreviousState $currentState `
@@ -1826,11 +1824,10 @@ Plan injected successfully via -InjectPlan.
             -NextMode $nextConfig.ActiveMode `
             -Status "IN_PROGRESS"
 
-        # Git commit for injection
         Invoke-GitCommit -FromState "INJECT" -ToState "EXECUTION" -PhaseName "Injected Plan" -TransitionCount $transitionCount
 
         Write-Host "  Status updated to EXECUTION. Transitions bumped by 3." -ForegroundColor Green
-        Write-Host "`nSUCCESS: Plan injected! Gates bypassed. Switch to EXECUTOR mode to begin." -ForegroundColor Green
+        Write-Host "`nSUCCESS: Plan injected. Switch to EXECUTOR mode to begin." -ForegroundColor Green
     }
     else {
         Write-Host "Roo Code Workflow Orchestrator v3" -ForegroundColor Cyan

@@ -5,6 +5,7 @@ import * as path from "path"
 import { exec } from "child_process"
 import type { ClineProviderLike } from "./index"
 import { WorkflowEngine, type EngineEvent } from "./WorkflowEngine"
+import { recommendRouting, INTENT_TO_CANDIDATES } from "./ModelAdvisor"
 
 interface BridgeProvider extends ClineProviderLike {
     createTask?(text?: string, images?: string[]): Promise<any>
@@ -270,7 +271,19 @@ export class WorkflowBridge {
                         this.engine.setAutonomy(body.autonomy)
                     }
                     const stack = typeof body.stack === "string" ? body.stack.trim() : undefined
-                    const result = await this.engine.startCycle(featureRequest, stack ? { manualStack: stack } : undefined)
+                    // V6 Phase A: thread through PRD-ingest extras when present
+                    const opts: any = {}
+                    if (stack) opts.manualStack = stack
+                    if (typeof body.prefilledFeatureRequest === "string" && body.prefilledFeatureRequest.trim()) {
+                        opts.prefilledFeatureRequest = body.prefilledFeatureRequest
+                    }
+                    if (body.reconciledPlan && typeof body.reconciledPlan === "object" &&
+                        typeof body.reconciledPlan.phasePlan === "string" &&
+                        typeof body.reconciledPlan.detailedPlan === "string" &&
+                        typeof body.reconciledPlan.planReview === "string") {
+                        opts.reconciledPlan = body.reconciledPlan
+                    }
+                    const result = await this.engine.startCycle(featureRequest, Object.keys(opts).length ? opts : undefined)
                     this.logActivity('cycle', `startCycle ${result.success ? 'OK' : 'FAILED'}: ${featureRequest.substring(0, 60)}`, result.success ? 'ok' : 'fail')
                     this.sendJson(res, { ...result, state: this.engine.getState() }); return
                 }
@@ -314,7 +327,64 @@ export class WorkflowBridge {
 
                 if (url === "/api/mode/current" && req.method === "GET") {
                     const mode = (globalThis as any).__rooWorkflowMode || (this.engine ? this.engine.getState().currentMode : null) || null
-                    this.sendJson(res, { mode }); return
+                    const modelOverride = (globalThis as any).__rooWorkflowModelOverride || null
+                    this.sendJson(res, { mode, modelOverride }); return
+                }
+
+                // === V6 PHASE C: MODEL ROUTING ===
+                // GET /api/models/list      → list of models the user has credentials for
+                // GET /api/models/recommend → preset routing recommendation for current stack
+                if (url === "/api/models/list" && req.method === "GET") {
+                    const models = await this.enumerateAvailableModels()
+                    this.sendJson(res, { models, intents: INTENT_TO_CANDIDATES }); return
+                }
+                if (url === "/api/models/recommend" && req.method === "GET") {
+                    const stack = this.engine ? this.engine.getState().detectedStack : null
+                    const projectSize = await this.estimateProjectSize(workspaceRoot)
+                    const tier = (req.url || "").includes("tier=premium") ? "premium"
+                        : (req.url || "").includes("tier=budget") ? "budget"
+                        : "balanced"
+                    const routing = recommendRouting(stack, projectSize, tier as any)
+                    this.sendJson(res, { routing, tier, projectSize, intents: INTENT_TO_CANDIDATES }); return
+                }
+
+                // === V6 PHASE A: PRD INGESTION ===
+                // POST /api/ingest/interpret { markdown } → LLM-uplifted interpretation
+                //
+                // V6.0 status: graceful stub. Roo Code's chat path is fire-and-forget;
+                // there is no synchronous one-shot completion API exposed to the bridge.
+                // The dashboard's `/api/ingest/prd` endpoint always runs the heuristic
+                // interpreter first (no LLM cost, deterministic) and only calls this
+                // endpoint when heuristic confidence < 0.6. When this stub returns the
+                // empty result below, the dashboard falls back to the heuristic — which
+                // is sufficient for clearly-structured PRDs like HR_Platform_PRD.md.
+                //
+                // V6.1 plan: implement async polling via provider.createTask + a
+                // task-completion watcher, OR have Roo Code expose a `provider.complete`
+                // one-shot API that we can `await` directly.
+                if (url === "/api/ingest/interpret" && req.method === "POST") {
+                    const body = await this.readBody(req).catch(() => "{}")
+                    let markdown = ""
+                    try { markdown = JSON.parse(body).markdown || "" } catch {}
+                    if (!markdown) { this.sendJson(res, { error: "markdown is required" }, 400); return }
+
+                    // Stub: return shape that the dashboard's merge logic understands,
+                    // but with zero confidence so the heuristic always wins.
+                    this.sendJson(res, {
+                        kind: "unknown",
+                        confidence: 0,
+                        fields: {
+                            projectName:     { value: "", confidence: 0 },
+                            projectType:     { value: "", confidence: 0 },
+                            summary:         { value: "", confidence: 0 },
+                            dataModel:       { value: "", confidence: 0 },
+                            constraints:     { value: "", confidence: 0 },
+                            successCriteria: { value: "", confidence: 0 },
+                            stackHints:      { value: [], confidence: 0 },
+                        },
+                        note: "LLM uplift not yet implemented in V6.0; heuristic interpretation will be used."
+                    })
+                    return
                 }
 
                 if (url.startsWith("/api/next") || url.startsWith("/api/reset") || url.startsWith("/api/undo") || url.startsWith("/api/resume")) {
@@ -385,5 +455,67 @@ export class WorkflowBridge {
             req.on("end", () => resolve(body))
             req.on("error", reject)
         })
+    }
+
+    /**
+     * V6 Phase C — enumerate models the user has credentials for. Falls back
+     * to the intent-label catalog if Roo Code's provider registry isn't
+     * accessible, so the dashboard always has *something* to populate the
+     * dropdowns with.
+     */
+    private async enumerateAvailableModels(): Promise<{ id: string; name?: string; provider?: string }[]> {
+        try {
+            // Try the provider's model getter if available; the exact API varies
+            // across Roo Code releases, so we probe a few possibilities.
+            const p = this.provider as any
+            if (p && typeof p.getAvailableModels === "function") {
+                const list = await p.getAvailableModels()
+                if (Array.isArray(list) && list.length > 0) return list
+            }
+            if (p && typeof p.listModels === "function") {
+                const list = await p.listModels()
+                if (Array.isArray(list) && list.length > 0) return list
+            }
+        } catch {
+            /* fall through */
+        }
+        // Fallback: union of all intent candidates so the dashboard at least
+        // shows the canonical model ids the advisor knows about.
+        const all = new Set<string>()
+        for (const candidates of Object.values(INTENT_TO_CANDIDATES)) {
+            for (const c of candidates) all.add(c)
+        }
+        return Array.from(all).map((id) => ({ id }))
+    }
+
+    /**
+     * V6 Phase C — quick project-size estimation for the model advisor's
+     * tier-bumping heuristic. Counts files + sums sizes (proxy for LOC) under
+     * the workspace root, capped to keep the operation cheap.
+     */
+    private async estimateProjectSize(workspaceRoot: string): Promise<{ fileCount: number; approxLoc: number }> {
+        if (!workspaceRoot) return { fileCount: 0, approxLoc: 0 }
+        let fileCount = 0
+        let totalBytes = 0
+        const SKIP_DIRS = new Set(["node_modules", ".git", "dist", "build", "out", ".next", ".turbo", ".venv", "vendor", "__pycache__"])
+        const MAX_FILES = 5000
+        const walk = (dir: string) => {
+            if (fileCount >= MAX_FILES) return
+            let entries: fs.Dirent[]
+            try { entries = fs.readdirSync(dir, { withFileTypes: true }) } catch { return }
+            for (const e of entries) {
+                if (fileCount >= MAX_FILES) return
+                if (e.isDirectory()) {
+                    if (SKIP_DIRS.has(e.name) || e.name.startsWith(".")) continue
+                    walk(path.join(dir, e.name))
+                } else if (e.isFile()) {
+                    fileCount++
+                    try { totalBytes += fs.statSync(path.join(dir, e.name)).size } catch {}
+                }
+            }
+        }
+        walk(workspaceRoot)
+        // Crude LOC estimate: ~50 bytes per line of code (mixed languages).
+        return { fileCount, approxLoc: Math.floor(totalBytes / 50) }
     }
 }

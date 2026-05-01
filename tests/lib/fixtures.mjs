@@ -19,6 +19,13 @@ export function makeTempWorkspace() {
   cpSync(join(REPO_ROOT, 'orchestrator.ps1'), join(dir, 'orchestrator.ps1'))
   cpSync(join(REPO_ROOT, 'init-workflow.ps1'), join(dir, 'init-workflow.ps1'))
   cpSync(join(REPO_ROOT, 'workflow-dashboard'), join(dir, 'workflow-dashboard'), { recursive: true })
+  // V6 Phase A: ship the orphan HR_Platform_PRD.md as test data so the
+  // `/api/ingest/sample` endpoint resolves to a real file in the temp workspace.
+  try {
+    cpSync(join(REPO_ROOT, 'HR_Platform_PRD.md'), join(dir, 'HR_Platform_PRD.md'))
+  } catch {
+    /* non-fatal — sample endpoint test will surface the gap */
+  }
   return {
     dir,
     cleanup() { try { rmSync(dir, { recursive: true, force: true }) } catch {} }

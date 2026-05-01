@@ -54,6 +54,16 @@ export interface WorkflowConfig {
     gateStrictness: "hard" | "soft"
     /** Per-mode context files to auto-inject */
     contextFiles: Record<string, string[]>
+
+    /** V6 Phase C — feature flag. When false (default), `resolveModelOverride`
+     *  always returns null and `model-params.ts` keeps its existing behavior. */
+    perPhaseModels: boolean
+
+    /** V6 Phase C — per-mode model override. Each entry maps a mode slug
+     *  (director / planner / executor / reviewer / workflow-master) to a
+     *  concrete model id and optional provider hint. Empty entries fall
+     *  back to the user's globally selected model. */
+    modelByMode: Record<string, { modelId: string; provider?: string }>
 }
 
 /** Default configuration values */
@@ -68,6 +78,8 @@ const DEFAULT_CONFIG: WorkflowConfig = {
     pollingIntervalMs: 3000,
     maxContextFileSizeKb: 50,
     gateStrictness: "hard",
+    perPhaseModels: false,
+    modelByMode: {},
     contextFiles: {
         "director": [
             "WORKFLOW/ORCHESTRATION_STATUS.json",
@@ -123,6 +135,8 @@ function loadConfig(workspaceRoot: string): WorkflowConfig {
             maxContextFileSizeKb: userConfig.maxContextFileSizeKb ?? DEFAULT_CONFIG.maxContextFileSizeKb,
             gateStrictness: userConfig.gateStrictness ?? DEFAULT_CONFIG.gateStrictness,
             contextFiles: { ...DEFAULT_CONFIG.contextFiles, ...(userConfig.contextFiles || {}) },
+            perPhaseModels: userConfig.perPhaseModels ?? DEFAULT_CONFIG.perPhaseModels,
+            modelByMode: { ...DEFAULT_CONFIG.modelByMode, ...(userConfig.modelByMode || {}) },
         }
     } catch (err) {
         console.warn("[Workflow] Could not parse workflow-config.json, using defaults:", err)
@@ -255,4 +269,36 @@ export function activateWorkflowIntegration(
  */
 export function resolveTokenBudget(activeMode: string, defaultMax: number): number {
     return _activeConfig.tokenBudgets[activeMode] ?? defaultMax
+}
+
+/**
+ * V6 Phase C — resolve a per-mode model override.
+ *
+ * Sibling of `resolveTokenBudget`. Returns null when:
+ *   - the `perPhaseModels` feature flag is off (default)
+ *   - or the active mode has no override configured
+ *
+ * Otherwise returns the configured `{ modelId, provider? }` so the API
+ * layer can swap the model for the duration of this phase.
+ *
+ * Wired into `roo-code-fork/src/api/transform/model-params.ts` via a
+ * single one-line call, sentinel-marked `// V6-WORKFLOW-PATCH` for ease
+ * of merge with upstream Roo Code.
+ */
+export function resolveModelOverride(activeMode: string): { modelId: string; provider?: string } | null {
+    if (!_activeConfig.perPhaseModels) return null
+    const entry = _activeConfig.modelByMode[activeMode]
+    if (!entry || !entry.modelId) return null
+    return { modelId: entry.modelId, provider: entry.provider }
+}
+
+/**
+ * V6 Phase C — return a snapshot of the current modelByMode + flag.
+ * Used by the dashboard's `/api/config/models` GET to display + edit.
+ */
+export function getModelRoutingConfig(): { perPhaseModels: boolean; modelByMode: Record<string, { modelId: string; provider?: string }> } {
+    return {
+        perPhaseModels: _activeConfig.perPhaseModels,
+        modelByMode: { ..._activeConfig.modelByMode },
+    }
 }

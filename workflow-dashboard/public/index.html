@@ -142,6 +142,62 @@
       </div>
     </section>
 
+    <!-- V6 Phase A: Import PRD (collapsible) -->
+    <section class="card-enter" style="animation-delay:0.06s">
+      <div class="glass-card" id="ingestCard">
+        <div class="flex items-center justify-between mb-3" style="cursor:pointer" onclick="toggleIngest()">
+          <h2 class="section-label" style="margin-bottom:0"><span class="section-icon"><svg><use href="#icon-clipboard"/></svg></span>Import PRD or Plan</h2>
+          <span class="text-xs text-muted" id="ingestToggleHint">Click to expand &mdash; paste a PRD, drop a markdown file, or load the bundled HR sample. The interpreter pre-fills the wizard.</span>
+        </div>
+        <div id="ingestBody" style="display:none">
+          <p class="text-xs text-muted" style="margin-bottom:0.75rem">
+            Paste any markdown (PRD, half-baked plan, Notion export). The heuristic interpreter classifies it and extracts structured fields you can review and apply to the wizard. If it looks like a finished plan, you can also use it as-is and skip the planning phases entirely.
+          </p>
+
+          <div class="wiz-section">
+            <h3 class="wiz-section-title">1. Source markdown</h3>
+            <textarea id="ingestSource" class="wiz-input wiz-textarea-tall" rows="10"
+                      placeholder="# My Product&#10;&#10;## Vision&#10;...&#10;&#10;## Success Metrics&#10;..."></textarea>
+            <div style="display:flex;gap:0.5rem;margin-top:0.5rem;flex-wrap:wrap;align-items:center">
+              <button type="button" class="btn mode-btn" onclick="loadIngestSample()" style="font-size:0.78rem;padding:0.5rem 0.85rem">
+                <svg class="icon"><use href="#icon-clipboard"/></svg>
+                <span>Load sample (HR Platform)</span>
+              </button>
+              <input type="file" id="ingestFileInput" accept=".md,.txt,.markdown" style="display:none" onchange="loadIngestFile(event)">
+              <button type="button" class="btn mode-btn" onclick="document.getElementById('ingestFileInput').click()" style="font-size:0.78rem;padding:0.5rem 0.85rem">
+                <span>Choose file&hellip;</span>
+              </button>
+              <button type="button" class="btn btn-primary" onclick="runIngest()" id="ingestRunBtn" style="margin-left:auto;font-size:0.825rem;padding:0.55rem 1rem">
+                <svg class="icon"><use href="#icon-play"/></svg>
+                <span>Interpret</span>
+              </button>
+            </div>
+            <p id="ingestFeedback" class="text-xs text-muted" style="margin-top:0.4rem;min-height:1em"></p>
+          </div>
+
+          <div class="wiz-section" id="ingestResultSection" style="display:none">
+            <h3 class="wiz-section-title">2. Interpreted fields</h3>
+            <div style="display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap;margin-bottom:0.5rem">
+              <span class="status-badge" id="ingestKindBadge">&mdash;</span>
+              <span class="text-xs text-muted">Confidence:</span>
+              <span class="text-xs" id="ingestConfidence" style="font-weight:600">&mdash;</span>
+              <span class="text-xs text-muted" id="ingestSignals" style="margin-left:0.5rem"></span>
+            </div>
+            <div id="ingestFieldsGrid" class="ingest-fields"></div>
+            <div style="display:flex;gap:0.5rem;margin-top:0.75rem;flex-wrap:wrap">
+              <button type="button" class="btn btn-primary" id="ingestApplyWizardBtn" onclick="applyIngestToWizard()" style="font-size:0.825rem;padding:0.55rem 1rem">
+                <svg class="icon"><use href="#icon-arrow-right"/></svg>
+                <span>Apply to wizard</span>
+              </button>
+              <button type="button" class="btn btn-success" id="ingestSkipPlanBtn" onclick="ingestStartAsPlan()" style="display:none;font-size:0.825rem;padding:0.55rem 1rem">
+                <span>Use as plan, skip planning</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <!-- NEW: Project Setup Wizard (collapsible) -->
     <section class="card-enter" style="animation-delay:0.07s">
       <div class="glass-card" id="wizardCard">
@@ -303,6 +359,74 @@
           </div>
           <p id="wizFeedback" class="text-xs text-dim mt-2" style="min-height:1em"></p>
           <pre id="wizPreview" style="display:none;background:#020617;color:#cbd5e1;padding:0.75rem;border-radius:0.5rem;font-size:0.75rem;max-height:300px;overflow:auto;margin-top:0.5rem;white-space:pre-wrap"></pre>
+        </div>
+      </div>
+    </section>
+
+    <!-- V6 Phase C: Model Routing -->
+    <section class="card-enter" style="animation-delay:0.075s">
+      <div class="glass-card" id="modelRoutingCard">
+        <div class="flex items-center justify-between mb-3" style="cursor:pointer" onclick="toggleModelRouting()">
+          <h2 class="section-label" style="margin-bottom:0"><span class="section-icon"><svg><use href="#icon-layers"/></svg></span>Model Routing</h2>
+          <span class="text-xs text-muted" id="modelRoutingHint">Click to expand &mdash; assign a different model per phase (Director cheap, Executor large)</span>
+        </div>
+        <div id="modelRoutingBody" style="display:none">
+          <p class="text-xs text-muted" style="margin-bottom:0.6rem">
+            By default, one model runs every phase. Per-phase routing reduces cost (Director on a small fast model, Executor on a large smart one) and improves quality (planning models tuned for short prose, code models for execution). Settings persist in <code>WORKFLOW/workflow-config.json</code>.
+          </p>
+
+          <div class="wiz-section">
+            <h3 class="wiz-section-title">Quick presets</h3>
+            <div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center">
+              <button type="button" class="btn mode-btn" onclick="applyModelPreset('budget')"   style="font-size:0.78rem;padding:0.5rem 0.85rem">Budget</button>
+              <button type="button" class="btn mode-btn" onclick="applyModelPreset('balanced')" style="font-size:0.78rem;padding:0.5rem 0.85rem">Balanced</button>
+              <button type="button" class="btn mode-btn" onclick="applyModelPreset('premium')"  style="font-size:0.78rem;padding:0.5rem 0.85rem">Premium</button>
+              <button type="button" class="btn btn-primary" onclick="recommendModelRouting()" style="margin-left:auto;font-size:0.78rem;padding:0.5rem 0.85rem">
+                <svg class="icon"><use href="#icon-target"/></svg>
+                <span>AI recommend</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="wiz-section">
+            <h3 class="wiz-section-title">Per-mode model</h3>
+            <div class="wiz-grid-3">
+              <label class="wiz-label">Director (planning)
+                <select id="routingDirector" class="wiz-input"></select>
+              </label>
+              <label class="wiz-label">Planner (detailed plan)
+                <select id="routingPlanner" class="wiz-input"></select>
+              </label>
+              <label class="wiz-label">Executor (code)
+                <select id="routingExecutor" class="wiz-input"></select>
+              </label>
+            </div>
+            <div class="wiz-grid-3">
+              <label class="wiz-label">Reviewer
+                <select id="routingReviewer" class="wiz-input"></select>
+              </label>
+              <label class="wiz-label">Workflow Master
+                <select id="routingWorkflowMaster" class="wiz-input"></select>
+              </label>
+              <label class="wiz-label" style="justify-content:center">
+                <span style="display:flex;align-items:center;gap:0.5rem;margin-top:1.4rem">
+                  <input type="checkbox" id="routingEnabled" style="width:1.1rem;height:1.1rem;cursor:pointer">
+                  <span style="font-size:0.78rem;color:var(--text-primary);font-weight:500">Enable per-phase routing</span>
+                </span>
+              </label>
+            </div>
+          </div>
+
+          <div style="display:flex;gap:0.5rem;margin-top:0.6rem;flex-wrap:wrap;align-items:center">
+            <button type="button" class="btn btn-primary" onclick="saveModelRouting()" id="routingSaveBtn" style="font-size:0.825rem;padding:0.55rem 1rem">
+              <span>Save routing</span>
+            </button>
+            <button type="button" class="btn mode-btn" onclick="loadModelRouting()" style="font-size:0.78rem;padding:0.5rem 0.85rem">
+              <svg class="icon"><use href="#icon-refresh"/></svg>
+              <span>Reload</span>
+            </button>
+            <p id="routingFeedback" class="text-xs text-muted" style="margin:0 0 0 auto;min-height:1em"></p>
+          </div>
         </div>
       </div>
     </section>

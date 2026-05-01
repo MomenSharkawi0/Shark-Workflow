@@ -341,7 +341,27 @@ export class WorkflowEngine {
     }
 
     /** Start a new workflow cycle */
-    async startCycle(featureRequest: string, options?: { manualStack?: string }): Promise<{ success: boolean; error?: string }> {
+    /**
+     * Start a new cycle. V6 Phase A extends `options` with two PRD-ingestion
+     * paths:
+     *
+     *   - `prefilledFeatureRequest` — use this verbatim instead of building one
+     *     from `featureRequest`. Lets the dashboard's PRD interpreter hand us a
+     *     fully-formed FEATURE_REQUEST.md that already mirrors the wizard's
+     *     output shape.
+     *   - `reconciledPlan` — gate-compliant {phasePlan, detailedPlan,
+     *     planReview} triplet from `PlanReconciler`. When provided, write all
+     *     three into `WORKFLOW/ACTIVE/` so the engine can fast-forward past
+     *     PHASE_PLANNING and DETAILED_PLANNING.
+     */
+    async startCycle(
+        featureRequest: string,
+        options?: {
+            manualStack?: string
+            prefilledFeatureRequest?: string
+            reconciledPlan?: { phasePlan: string; detailedPlan: string; planReview: string }
+        },
+    ): Promise<{ success: boolean; error?: string }> {
         if (this.state.isRunning) {
             return { success: false, error: "A cycle is already running. Abort it first." }
         }
@@ -365,15 +385,30 @@ export class WorkflowEngine {
         // Write feature request file
         const activeDir = path.join(this.workspaceRoot, "WORKFLOW", "ACTIVE")
         if (!fs.existsSync(activeDir)) fs.mkdirSync(activeDir, { recursive: true })
-        
+
         // Append manual stack to feature request if provided (useful for new empty projects)
         let finalRequest = featureRequest
         if (options?.manualStack) {
             finalRequest += `\n\n## Requested Technology Stack\n${options.manualStack}`
         }
 
-        const content = `# Feature Request\n\n**Submitted:** ${new Date().toLocaleString()}\n\n## Description\n\n${finalRequest}\n`
+        // Phase A: prefilledFeatureRequest wins over the synthesised wrapper —
+        // the PRD interpreter already produced a full, well-formed document.
+        const content = options?.prefilledFeatureRequest
+            ? options.prefilledFeatureRequest
+            : `# Feature Request\n\n**Submitted:** ${new Date().toLocaleString()}\n\n## Description\n\n${finalRequest}\n`
         fs.writeFileSync(this.getActivePath("FEATURE_REQUEST.md"), content, "utf-8")
+
+        // Phase A: when a reconciled plan is supplied, materialise the triplet
+        // so gates 1-3 pass with real content rather than the legacy dummies.
+        if (options?.reconciledPlan) {
+            fs.writeFileSync(this.getActivePath("PHASE_PLAN.md"),    options.reconciledPlan.phasePlan, "utf-8")
+            fs.writeFileSync(this.getActivePath("DETAILED_PLAN.md"), options.reconciledPlan.detailedPlan, "utf-8")
+            fs.writeFileSync(this.getActivePath("PLAN_REVIEW.md"),   options.reconciledPlan.planReview, "utf-8")
+            // PLAN_APPROVED.md mirrors DETAILED_PLAN.md when the reconciler approved.
+            fs.writeFileSync(this.getActivePath("PLAN_APPROVED.md"), options.reconciledPlan.detailedPlan, "utf-8")
+            this.emit("info", "Reconciled plan applied: PHASE_PLAN, DETAILED_PLAN, PLAN_REVIEW (APPROVED), PLAN_APPROVED written")
+        }
 
         this.emit("info", `Cycle started: ${finalRequest.substring(0, 80)}...`)
 

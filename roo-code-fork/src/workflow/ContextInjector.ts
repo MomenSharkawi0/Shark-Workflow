@@ -45,6 +45,12 @@ export class ContextInjector {
             "WORKFLOW/SELF_REVIEW_CHECKLIST.md",
             "WORKFLOW/ACTIVE/QUALITY_GATES.md",
         ],
+        // V6 Phase A — prd-interpreter mode is invoked by the bridge to extract
+        // structured fields from arbitrary PRD/plan markdown. It only needs the
+        // wizard's option vocabulary so it knows the canonical field names.
+        "prd-interpreter": [
+            "workflow-dashboard/wizard-options.json",
+        ],
     }
 
     constructor(

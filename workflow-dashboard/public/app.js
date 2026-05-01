@@ -1083,6 +1083,388 @@ window.addEventListener('DOMContentLoaded', () => setTimeout(refreshDoctor, 700)
 setInterval(refreshDoctor, 5000);
 
 // ============================================================================
+// V6 PHASE A — IMPORT PRD / PLAN
+// ============================================================================
+
+let LAST_INGEST_RESULT = null;
+
+function toggleIngest() {
+  const body = $('ingestBody');
+  const hint = $('ingestToggleHint');
+  if (!body) return;
+  const open = body.style.display !== 'none';
+  body.style.display = open ? 'none' : 'block';
+  hint.textContent = open
+    ? 'Click to expand — paste a PRD, drop a markdown file, or load the bundled HR sample. The interpreter pre-fills the wizard.'
+    : 'Click to collapse';
+}
+
+function setIngestFeedback(msg, kind) {
+  const el = $('ingestFeedback');
+  if (!el) return;
+  el.textContent = msg;
+  el.style.color = kind === 'ok'   ? 'var(--ok, #22c55e)' :
+                   kind === 'fail' ? 'var(--bad, #dc4444)' : '';
+}
+
+async function loadIngestSample() {
+  setIngestFeedback('Loading sample...', '');
+  try {
+    const res = await fetch('/api/ingest/sample');
+    const data = await res.json();
+    if (!res.ok) { setIngestFeedback(`Sample unavailable: ${data.error || res.status}`, 'fail'); return; }
+    $('ingestSource').value = data.markdown;
+    setIngestFeedback(`Loaded ${data.source} (${(data.markdown.length / 1024).toFixed(1)} KB). Click Interpret to extract fields.`, 'ok');
+  } catch (err) {
+    setIngestFeedback('Could not reach the dashboard server.', 'fail');
+  }
+}
+
+function loadIngestFile(event) {
+  const file = event.target.files && event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    $('ingestSource').value = e.target.result || '';
+    setIngestFeedback(`Loaded ${file.name} (${(file.size / 1024).toFixed(1)} KB). Click Interpret.`, 'ok');
+  };
+  reader.onerror = () => setIngestFeedback(`Failed to read ${file.name}.`, 'fail');
+  reader.readAsText(file);
+  event.target.value = ''; // reset so the same file can be re-selected
+}
+
+async function runIngest() {
+  const md = $('ingestSource').value;
+  if (!md || md.trim().length < 30) {
+    setIngestFeedback('Paste at least a few sentences of markdown first.', 'fail');
+    return;
+  }
+  if (md.length > 1024 * 1024) {
+    setIngestFeedback('Source is too large (max 1 MB).', 'fail');
+    return;
+  }
+  const btn = $('ingestRunBtn');
+  btn.classList.add('btn-loading');
+  setIngestFeedback('Interpreting...', '');
+  try {
+    const res = await fetch('/api/ingest/prd', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ markdown: md, mode: 'reconcile' }),
+    });
+    const data = await res.json();
+    if (!res.ok) { setIngestFeedback(`Failed: ${data.error || res.status}`, 'fail'); return; }
+    LAST_INGEST_RESULT = data;
+    renderIngestResult(data);
+    setIngestFeedback(`Interpreted as ${data.kind} (confidence ${(data.confidence * 100).toFixed(0)}%).`, 'ok');
+  } catch (err) {
+    setIngestFeedback(`Network error: ${err.message}`, 'fail');
+  } finally {
+    btn.classList.remove('btn-loading');
+  }
+}
+
+function confidenceClass(c) {
+  if (c >= 0.7) return 'hi';
+  if (c >= 0.4) return 'med';
+  return 'lo';
+}
+function confidenceLabel(c) {
+  if (c >= 0.7) return 'HIGH';
+  if (c >= 0.4) return 'MED';
+  return 'LOW';
+}
+
+function renderIngestResult(data) {
+  const section = $('ingestResultSection');
+  section.style.display = 'block';
+  // Kind badge
+  const badge = $('ingestKindBadge');
+  badge.textContent = (data.kind || 'unknown').toUpperCase();
+  badge.className = 'status-badge ' + (
+    data.kind === 'plan' ? 'status-badge-complete' :
+    data.kind === 'prd'  ? 'status-badge-progress' :
+    'status-badge-progress'
+  );
+  // Aggregate confidence
+  const confEl = $('ingestConfidence');
+  confEl.textContent = `${(data.confidence * 100).toFixed(0)}%`;
+  confEl.style.color = data.confidence >= 0.7 ? 'var(--ok)' : data.confidence >= 0.4 ? 'var(--warn)' : 'var(--text-muted)';
+  // Signals (compact)
+  const sigsEl = $('ingestSignals');
+  const sigs = (data.signals || []).slice(0, 4).map(s => s.replace(/^(plan|prd):/, '')).join(' · ');
+  sigsEl.textContent = sigs ? `Signals: ${sigs}` : '';
+  // Fields grid
+  const grid = $('ingestFieldsGrid');
+  const fieldsToShow = [
+    ['projectName', 'Project name'],
+    ['projectType', 'Project type'],
+    ['summary', 'Summary'],
+    ['stackHints', 'Stack hints'],
+    ['dataModel', 'Data model'],
+    ['constraints', 'Constraints'],
+    ['successCriteria', 'Success criteria'],
+  ];
+  grid.innerHTML = fieldsToShow.map(([key, label]) => {
+    const f = (data.fields || {})[key] || { value: '', confidence: 0 };
+    const value = Array.isArray(f.value) ? f.value.join(', ') : (f.value || '');
+    const display = value ? escapeHtml(value) : '<em>not detected</em>';
+    return `
+      <div class="ingest-field">
+        <div class="ingest-field-row">
+          <span class="ingest-field-label">${label}</span>
+          <span class="ingest-confidence-pill ${confidenceClass(f.confidence)}">${confidenceLabel(f.confidence)}</span>
+        </div>
+        <div class="ingest-field-value ${value ? '' : 'empty'}">${display}</div>
+      </div>`;
+  }).join('');
+  // Show "use as plan" only when kind is plan-like
+  $('ingestSkipPlanBtn').style.display = (data.kind === 'plan' || data.kind === 'hybrid') ? '' : 'none';
+}
+
+/** Apply interpreted fields into the Project Setup Wizard form */
+function applyIngestToWizard() {
+  if (!LAST_INGEST_RESULT) return;
+  // Make sure the wizard panel is open + options loaded
+  const wizardBody = $('wizardBody');
+  if (wizardBody && wizardBody.style.display === 'none') toggleWizard();
+  const apply = async () => {
+    if (!WIZARD_OPTIONS) await loadWizardOptions();
+    const f = LAST_INGEST_RESULT.fields || {};
+    if (f.projectName && f.projectName.value) $('wizProjectName').value = f.projectName.value;
+    if (f.summary && f.summary.value) $('wizSummary').value = f.summary.value;
+    if (f.dataModel && f.dataModel.value) $('wizDataModel').value = f.dataModel.value;
+    if (f.constraints && f.constraints.value) $('wizConstraints').value = f.constraints.value;
+    if (f.successCriteria && f.successCriteria.value) $('wizSuccess').value = f.successCriteria.value;
+    // Project type — try to match against the dropdown by label substring
+    if (f.projectType && f.projectType.value) {
+      const sel = $('wizProjectType');
+      const target = f.projectType.value.toLowerCase();
+      for (const opt of sel.options) {
+        if (opt.text.toLowerCase().includes(target.split(' ')[0])) { sel.value = opt.value; break; }
+      }
+    }
+    setIngestFeedback('Applied to the wizard. Scroll to "Project Setup Wizard" to review and Start.', 'ok');
+    document.getElementById('wizardCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+  apply();
+}
+
+// ============================================================================
+// V6 PHASE C — MODEL ROUTING
+// ============================================================================
+
+let MODEL_LIST_CACHE = null;
+const ROUTING_MODES = ['director', 'planner', 'executor', 'reviewer', 'workflow-master'];
+const ROUTING_FIELD_IDS = {
+  director: 'routingDirector',
+  planner: 'routingPlanner',
+  executor: 'routingExecutor',
+  reviewer: 'routingReviewer',
+  'workflow-master': 'routingWorkflowMaster',
+};
+
+function toggleModelRouting() {
+  const body = $('modelRoutingBody');
+  const hint = $('modelRoutingHint');
+  if (!body) return;
+  const open = body.style.display !== 'none';
+  body.style.display = open ? 'none' : 'block';
+  hint.textContent = open
+    ? 'Click to expand — assign a different model per phase (Director cheap, Executor large)'
+    : 'Click to collapse';
+  if (!open) initModelRouting();
+}
+
+function setRoutingFeedback(msg, kind) {
+  const el = $('routingFeedback');
+  if (!el) return;
+  el.textContent = msg;
+  el.style.color = kind === 'ok'   ? 'var(--ok, #22c55e)' :
+                   kind === 'fail' ? 'var(--bad, #dc4444)' : '';
+}
+
+async function initModelRouting() {
+  await loadModelList();
+  await loadModelRouting();
+}
+
+async function loadModelList() {
+  if (MODEL_LIST_CACHE) return MODEL_LIST_CACHE;
+  try {
+    const res = await fetch('/api/models/list');
+    if (!res.ok) {
+      // Bridge offline — show only the empty placeholder per dropdown
+      MODEL_LIST_CACHE = { models: [], intents: {} };
+      return MODEL_LIST_CACHE;
+    }
+    MODEL_LIST_CACHE = await res.json();
+    populateModelDropdowns();
+    return MODEL_LIST_CACHE;
+  } catch {
+    MODEL_LIST_CACHE = { models: [], intents: {} };
+    return MODEL_LIST_CACHE;
+  }
+}
+
+function populateModelDropdowns() {
+  const { models = [], intents = {} } = MODEL_LIST_CACHE || {};
+  for (const mode of ROUTING_MODES) {
+    const sel = $(ROUTING_FIELD_IDS[mode]);
+    if (!sel) continue;
+    sel.innerHTML = '';
+    // Empty option = fall back to user's default
+    const empty = document.createElement('option');
+    empty.value = '';
+    empty.textContent = '(use default model)';
+    sel.appendChild(empty);
+    // Intent options group
+    if (Object.keys(intents).length) {
+      const intentGroup = document.createElement('optgroup');
+      intentGroup.label = 'Tier (auto-resolves to a model you have)';
+      for (const intent of Object.keys(intents)) {
+        const o = document.createElement('option');
+        o.value = intent;
+        o.textContent = intent.replace(/-/g, ' ');
+        intentGroup.appendChild(o);
+      }
+      sel.appendChild(intentGroup);
+    }
+    // Concrete model options
+    if (models.length) {
+      const modelGroup = document.createElement('optgroup');
+      modelGroup.label = 'Concrete models';
+      for (const m of models) {
+        const o = document.createElement('option');
+        o.value = m.id;
+        o.textContent = m.id + (m.provider ? ' · ' + m.provider : '');
+        modelGroup.appendChild(o);
+      }
+      sel.appendChild(modelGroup);
+    }
+  }
+}
+
+async function loadModelRouting() {
+  try {
+    const res = await fetch('/api/config/models');
+    if (!res.ok) return;
+    const data = await res.json();
+    const enabledEl = $('routingEnabled');
+    if (enabledEl) enabledEl.checked = !!data.perPhaseModels;
+    for (const mode of ROUTING_MODES) {
+      const sel = $(ROUTING_FIELD_IDS[mode]);
+      const entry = (data.modelByMode || {})[mode];
+      if (sel) sel.value = entry && entry.modelId ? entry.modelId : '';
+    }
+    setRoutingFeedback(data.perPhaseModels ? 'Per-phase routing is ENABLED.' : 'Per-phase routing is disabled (single model runs every phase).', '');
+  } catch {
+    setRoutingFeedback('Could not load routing config.', 'fail');
+  }
+}
+
+function applyModelPreset(tier) {
+  // Pre-fills the dropdowns with intent labels matching the selected tier.
+  // The user clicks Save to persist + enable.
+  const presets = {
+    budget:   { director: 'small-fast',   planner: 'small-fast',   executor: 'mid-balanced', reviewer: 'small-fast',   'workflow-master': 'mid-balanced' },
+    balanced: { director: 'small-fast',   planner: 'mid-balanced', executor: 'large-smart',  reviewer: 'small-fast',   'workflow-master': 'large-smart'  },
+    premium:  { director: 'mid-balanced', planner: 'large-smart',  executor: 'large-smart',  reviewer: 'mid-balanced', 'workflow-master': 'large-smart'  },
+  };
+  const p = presets[tier];
+  if (!p) return;
+  for (const mode of ROUTING_MODES) {
+    const sel = $(ROUTING_FIELD_IDS[mode]);
+    if (sel) sel.value = p[mode] || '';
+  }
+  setRoutingFeedback(`Applied "${tier}" preset. Tick "Enable per-phase routing" and click Save.`, '');
+}
+
+async function recommendModelRouting() {
+  setRoutingFeedback('Asking the advisor...', '');
+  try {
+    const res = await fetch('/api/models/recommend');
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      setRoutingFeedback(`Recommendation unavailable: ${data.error || res.status}. Bridge may be offline.`, 'fail');
+      return;
+    }
+    const data = await res.json();
+    const r = data.routing || {};
+    for (const mode of ROUTING_MODES) {
+      const sel = $(ROUTING_FIELD_IDS[mode]);
+      if (sel && r[mode] && r[mode].modelId) sel.value = r[mode].modelId;
+    }
+    setRoutingFeedback(`Recommended ${data.tier} routing for ${data.projectSize.fileCount} files (${(data.projectSize.approxLoc / 1000).toFixed(1)}k LOC). Tick "Enable" and Save.`, 'ok');
+  } catch (err) {
+    setRoutingFeedback(`Network error: ${err.message}`, 'fail');
+  }
+}
+
+async function saveModelRouting() {
+  const enabled = $('routingEnabled') ? !!$('routingEnabled').checked : false;
+  const modelByMode = {};
+  for (const mode of ROUTING_MODES) {
+    const sel = $(ROUTING_FIELD_IDS[mode]);
+    if (sel && sel.value) modelByMode[mode] = { modelId: sel.value };
+  }
+  const btn = $('routingSaveBtn');
+  if (btn) btn.classList.add('btn-loading');
+  setRoutingFeedback('Saving...', '');
+  try {
+    const res = await fetch('/api/config/models', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ perPhaseModels: enabled, modelByMode }),
+    });
+    const data = await res.json();
+    if (res.ok && data.success) {
+      setRoutingFeedback(`Saved. ${enabled ? 'Per-phase routing is ON.' : 'Routing is configured but disabled — tick the box and Save to enable.'}`, 'ok');
+    } else {
+      setRoutingFeedback(`Save failed: ${data.error || res.status}`, 'fail');
+    }
+  } catch (err) {
+    setRoutingFeedback(`Network error: ${err.message}`, 'fail');
+  } finally {
+    if (btn) btn.classList.remove('btn-loading');
+  }
+}
+
+/** Skip planning — use the interpreted source as a fully-reconciled plan */
+async function ingestStartAsPlan() {
+  if (!LAST_INGEST_RESULT || !LAST_INGEST_RESULT.reconciled) {
+    setIngestFeedback('Reconciled triplet missing. Re-run Interpret with mode=reconcile.', 'fail');
+    return;
+  }
+  if (!confirm('Start a cycle with this plan and skip the planning phases? The reconciler will preserve your original markdown verbatim under "## Original Plan".')) return;
+  const f = LAST_INGEST_RESULT.fields || {};
+  const summary = (f.summary && f.summary.value) || (f.projectName && f.projectName.value) || 'Imported plan';
+  setIngestFeedback('Starting cycle with reconciled plan...', '');
+  try {
+    const res = await fetch('/api/wizard/start', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        summary,
+        autonomy: $('wizAutonomy') ? $('wizAutonomy').value : 'semi-auto',
+        prefilledFeatureRequest: LAST_INGEST_RESULT.featureRequest,
+        reconciledPlan: LAST_INGEST_RESULT.reconciled,
+      }),
+    });
+    const data = await res.json();
+    if (res.ok && data.success) {
+      setIngestFeedback('Cycle started with reconciled plan. The Director will see your original markdown verbatim.', 'ok');
+      setTimeout(refreshCurrentMode, 500);
+      setTimeout(refreshDoctor, 800);
+    } else {
+      setIngestFeedback(`Failed: ${data.error || 'unknown error'}`, 'fail');
+    }
+  } catch (err) {
+    setIngestFeedback(`Bridge unreachable: ${err.message}`, 'fail');
+  }
+}
+
+// ============================================================================
 // QUALITY GATES (fallback polling — gate data not yet in SSE)
 // ============================================================================
 

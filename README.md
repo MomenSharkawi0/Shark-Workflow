@@ -28,6 +28,39 @@ INIT  →  PHASE_PLANNING  →  DETAILED_PLANNING  →  PLAN_REVIEW  →  EXECUT
 
 ---
 
+## What's new in V6
+
+V6 is the first release that makes the workflow truly **production-grade** for real-world projects:
+
+### Import any PRD or plan (Phase A)
+
+The dashboard's new **Import PRD** panel accepts arbitrary markdown — a PRD you brainstormed elsewhere, a half-baked implementation plan, even a Notion export. A heuristic interpreter classifies it (`kind: "prd" | "plan" | "hybrid"`) and extracts structured fields with confidence scores. You then either:
+
+- **Apply to wizard** — pre-fills the Project Setup Wizard so you can review and tweak before kicking off a cycle
+- **Use as plan, skip planning** — the plan reconciler produces gate-compliant `{PHASE_PLAN, DETAILED_PLAN, PLAN_REVIEW}` files, **preserving your original markdown verbatim under `## Original Plan`**, and the engine fast-forwards to PLAN_REVIEW with an automatic APPROVED status
+
+`orchestrator.ps1 -InjectPlan` was rewritten to use the same reconciler when the dashboard is reachable — no more dummy `Injected externally` placeholders.
+
+The bundled `HR_Platform_PRD.md` is now the demo payload. Click **Load sample (HR Platform)** in the Import panel to see the full flow.
+
+### Per-phase model routing (Phase C)
+
+Stop running one expensive model for every phase. The new **Model Routing** panel lets you assign a different model per role:
+
+- **Director** (planning) — small, fast model (e.g. Haiku, GPT-4o-mini)
+- **Planner** (detailed plan) — balanced (e.g. Sonnet, GPT-4o)
+- **Executor** (code) — large, smart (e.g. Opus, GPT-5)
+- **Reviewer** — small, fast
+- **Workflow Master** — large, smart
+
+Three one-click presets (Budget / Balanced / Premium) plus an **AI recommend** button that consults the project's detected stack and size. Settings persist in `WORKFLOW/workflow-config.json` under `perPhaseModels` and `modelByMode`. Disabled by default — the existing single-model behavior keeps working until you opt in.
+
+### Roadmap
+
+Phases B (stack-recommendation engine), D (semantic LLM-as-Judge gates, hybrid by default), and E (stack-aware phase prompts) are the next V6 minor releases. Their architectural foundations are already in place.
+
+---
+
 ## Quick start (5 minutes)
 
 ### Prerequisites

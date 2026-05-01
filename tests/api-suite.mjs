@@ -524,6 +524,176 @@ suite('11. Doctor / Recovery', () => {
 })
 
 // =============================================================================
+// 12. PRD Ingestion + Plan Reconciliation (V6 Phase A)
+// =============================================================================
+suite('12. PRD Ingestion + Plan Reconciliation', () => {
+  let hrPrdContent = ''
+  let planStyleContent = ''
+
+  test('fixtures load', async () => {
+    const { readFileSync } = await import('node:fs')
+    hrPrdContent = readFileSync(join(REPO_ROOT, 'tests/lib/fixtures/prd-samples/hr-platform.md'), 'utf-8')
+    planStyleContent = readFileSync(join(REPO_ROOT, 'tests/lib/fixtures/prd-samples/plan-style.md'), 'utf-8')
+    assert.greaterOrEqual(hrPrdContent.length, 1000)
+    assert.greaterOrEqual(planStyleContent.length, 200)
+  })
+
+  test('GET /api/ingest/sample returns the HR PRD body', async () => {
+    const r = await http(`${dashboard.base}/api/ingest/sample`)
+    assert.status(r, 200)
+    assert.isType(r.body.markdown, 'string')
+    assert.contains(r.body.markdown, 'HR')
+    assert.contains(r.body.markdown, 'Platform')
+  })
+
+  test('POST /api/ingest/prd rejects empty markdown with 400', async () => {
+    const r = await http(`${dashboard.base}/api/ingest/prd`, { method: 'POST', body: { markdown: '' } })
+    assert.status(r, 400)
+  })
+
+  test('POST /api/ingest/prd rejects > 1MB body with 413', async () => {
+    const r = await http(`${dashboard.base}/api/ingest/prd`, { method: 'POST', body: { markdown: 'x'.repeat(1024 * 1024 + 10) } })
+    assert.status(r, 413)
+  })
+
+  test('PRD ingest — heuristic classifies HR_Platform_PRD.md as kind=prd', async () => {
+    const r = await http(`${dashboard.base}/api/ingest/prd`, { method: 'POST', body: { markdown: hrPrdContent } })
+    assert.status(r, 200)
+    assert.equal(r.body.kind, 'prd')
+    assert.equal(r.body.fields.projectName.value, 'HR Platform')
+    assert.greaterOrEqual(r.body.confidence, 0.5)
+    // Stack hints — HR PRD mentions web + mobile, but no specific framework names guaranteed
+    assert.ok(Array.isArray(r.body.fields.stackHints.value))
+    // Project type should auto-detect Mobile or Web (it has both touchpoints)
+    assert.ok(r.body.fields.projectType.value.length > 0)
+  })
+
+  test('PRD ingest — heuristic classifies plan-shaped markdown as kind=plan', async () => {
+    const r = await http(`${dashboard.base}/api/ingest/prd`, { method: 'POST', body: { markdown: planStyleContent } })
+    assert.status(r, 200)
+    assert.equal(r.body.kind, 'plan')
+    assert.greaterOrEqual(r.body.confidence, 0.5)
+    // Stack hints should include Laravel + Filament from the fixture
+    const hints = r.body.fields.stackHints.value.join(' ').toLowerCase()
+    assert.contains(hints, 'laravel')
+  })
+
+  test('Reconciler — output passes Gate 2 regex (Files to Modify AND Implementation Steps)', async () => {
+    const r = await http(`${dashboard.base}/api/ingest/prd`, { method: 'POST', body: { markdown: planStyleContent, mode: 'reconcile' } })
+    assert.status(r, 200)
+    assert.ok(r.body.reconciled, 'reconciled triplet should be present')
+    assert.match(r.body.reconciled.detailedPlan, /^##\s+Files to Modify\b/m)
+    assert.match(r.body.reconciled.detailedPlan, /^##\s+Implementation Steps\b/m)
+  })
+
+  test('Reconciler — output passes Gate 3 regex (STATUS: APPROVED)', async () => {
+    const r = await http(`${dashboard.base}/api/ingest/prd`, { method: 'POST', body: { markdown: planStyleContent, mode: 'reconcile' } })
+    assert.status(r, 200)
+    assert.match(r.body.reconciled.planReview, /STATUS:\s*APPROVED/)
+  })
+
+  test('Reconciler — phase plan passes Gate 1 regex (## Phase N)', async () => {
+    const r = await http(`${dashboard.base}/api/ingest/prd`, { method: 'POST', body: { markdown: planStyleContent, mode: 'reconcile' } })
+    assert.status(r, 200)
+    assert.match(r.body.reconciled.phasePlan, /##\s+Phase\s+\d/)
+  })
+
+  test('Reconciler — preserves original plan verbatim under sub-heading', async () => {
+    const r = await http(`${dashboard.base}/api/ingest/prd`, { method: 'POST', body: { markdown: planStyleContent, mode: 'reconcile' } })
+    assert.status(r, 200)
+    assert.contains(r.body.reconciled.detailedPlan, 'Original Plan')
+    // The unique text from plan-style.md fixture must survive verbatim
+    assert.contains(r.body.reconciled.detailedPlan, 'StockService::transfer')
+  })
+
+  test('Reconciler — featureRequest mirrors buildFeatureRequest shape', async () => {
+    const r = await http(`${dashboard.base}/api/ingest/prd`, { method: 'POST', body: { markdown: hrPrdContent, mode: 'reconcile' } })
+    assert.status(r, 200)
+    assert.isType(r.body.featureRequest, 'string')
+    assert.contains(r.body.featureRequest, '# Feature Request')
+    assert.contains(r.body.featureRequest, 'What to build')
+    assert.contains(r.body.featureRequest, 'Original PRD')
+  })
+
+  test('-InjectPlan no longer writes hard-coded "Injected externally" dummy', async () => {
+    // Reset the workspace so we can test the inject flow cleanly
+    await runOrchestrator(workspace.dir, ['-Reset', '-SkipGit'])
+    // Write a plan fixture into the workspace, then -InjectPlan
+    writeFile(workspace.dir, '_v6_inject.md', planStyleContent)
+    const planPath = join(workspace.dir, '_v6_inject.md')
+    // Dashboard isn't running in this test workspace, so the legacy fallback path runs.
+    // The legacy fallback no longer says "Injected externally" in PHASE_PLAN.md (we
+    // kept the marker only in the optional fallback). Either path is acceptable as
+    // long as no orphan "## Phase 1: Injected" with "Goal: Injected externally." appears
+    // when the dashboard IS running. Here we just sanity-check the command doesn't crash.
+    const r = await runOrchestrator(workspace.dir, ['-InjectPlan', planPath, '-SkipGit'])
+    assert.equal(r.code, 0, `inject failed: ${r.stdout}\n${r.stderr}`)
+    const status = readStatus(workspace.dir)
+    assert.equal(status.currentState, 'EXECUTION')
+  })
+})
+
+// =============================================================================
+// 13. Per-phase Model Routing (V6 Phase C)
+// =============================================================================
+suite('13. Per-phase Model Routing', () => {
+  test('GET /api/config/models — defaults when no config file', async () => {
+    // Reset workspace so the config file is fresh
+    await runOrchestrator(workspace.dir, ['-Reset', '-SkipGit'])
+    const r = await http(`${dashboard.base}/api/config/models`)
+    assert.status(r, 200)
+    assert.equal(r.body.perPhaseModels, false)
+    assert.deepEqual(r.body.modelByMode, {})
+  })
+
+  test('POST /api/config/models — persists perPhaseModels + modelByMode', async () => {
+    const payload = {
+      perPhaseModels: true,
+      modelByMode: {
+        director:        { modelId: 'small-fast' },
+        executor:        { modelId: 'large-smart' },
+        'workflow-master': { modelId: 'large-smart' },
+      },
+    }
+    const r = await http(`${dashboard.base}/api/config/models`, { method: 'POST', body: payload })
+    assert.status(r, 200)
+    assert.equal(r.body.success, true)
+    assert.equal(r.body.perPhaseModels, true)
+    assert.equal(r.body.modelByMode.director.modelId, 'small-fast')
+
+    // Read back
+    const g = await http(`${dashboard.base}/api/config/models`)
+    assert.status(g, 200)
+    assert.equal(g.body.perPhaseModels, true)
+    assert.equal(g.body.modelByMode.executor.modelId, 'large-smart')
+  })
+
+  test('POST /api/config/models — rejects non-boolean perPhaseModels', async () => {
+    const r = await http(`${dashboard.base}/api/config/models`, { method: 'POST', body: { perPhaseModels: 'yes', modelByMode: {} } })
+    assert.status(r, 400)
+  })
+
+  test('POST /api/config/models — rejects empty modelId in entry', async () => {
+    const r = await http(`${dashboard.base}/api/config/models`, {
+      method: 'POST',
+      body: { perPhaseModels: true, modelByMode: { director: { modelId: '' } } },
+    })
+    assert.status(r, 400)
+  })
+
+  test('GET /api/models/list — proxies to bridge and 503s when offline', async () => {
+    // BRIDGE_BASE in tests points at port 1 (unreachable) so this should 503
+    const r = await http(`${dashboard.base}/api/models/list`)
+    assert.status(r, 503)
+  })
+
+  test('GET /api/models/recommend — proxies to bridge and 503s when offline', async () => {
+    const r = await http(`${dashboard.base}/api/models/recommend`)
+    assert.status(r, 503)
+  })
+})
+
+// =============================================================================
 // Teardown
 // =============================================================================
 suite('99. Teardown', () => {

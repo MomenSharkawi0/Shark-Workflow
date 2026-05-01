@@ -65,6 +65,22 @@ Stops the turbo daemon first (so its log handle is closed), then deletes
 with `fs.rmSync(maxRetries: 15)`. Tolerates EPERM/EBUSY/EACCES/ENOTEMPTY/
 ENOENT (anything else is fatal).
 
+### `src/workflow/PrdInterpreter.ts` (V6 Phase A — new)
+
+Heuristic markdown classifier + field extractor. Pure logic, no LLM call. Detects PRD-shaped vs plan-shaped vs hybrid markdown and pulls structured fields (project name, summary, data model, constraints, success criteria, stack hints) with per-field confidence.
+
+### `src/workflow/PlanReconciler.ts` (V6 Phase A — new)
+
+Produces gate-compliant `{phasePlan, detailedPlan, planReview}` triplets from any markdown. Original input always preserved verbatim under `## Original Plan`. Replaces the legacy `-InjectPlan` dummy-file generation.
+
+### `src/workflow/ModelAdvisor.ts` (V6 Phase C — new)
+
+Preset routing matrix mapping budget tier (budget / balanced / premium) to per-mode intent labels (`small-fast`, `mid-balanced`, `large-smart`). The dashboard resolves intent labels to concrete model ids using the user's available registry.
+
+### `src/api/transform/model-params.ts` (V6 Phase C — sentinel-marked patch)
+
+Two `// V6-WORKFLOW-PATCH` blocks: one in the imports, one in the function body. Adds `resolveModelOverride(activeMode)` alongside the existing `resolveTokenBudget`. Surfaces the configured override to `globalThis.__rooWorkflowModelOverride` for the dashboard status surface. Dormant by default (feature flag `perPhaseModels: false`).
+
 ### `scripts/install-vsix.js` (modified)
 
 Added a `resolveEditorCommand()` helper that finds the VS Code (or Cursor /

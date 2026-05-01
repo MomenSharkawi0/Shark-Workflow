@@ -15,7 +15,11 @@ import {
 	getModelMaxOutputTokens,
 } from "../../shared/api"
 
-import { resolveTokenBudget } from "../../workflow"
+// V6-WORKFLOW-PATCH: imports also pulls in resolveModelOverride for per-phase
+// model routing. Both functions are no-ops by default — they only kick in when
+// the user has WORKFLOW/workflow-config.json with `perPhaseModels: true` and a
+// `modelByMode` map.
+import { resolveTokenBudget, resolveModelOverride } from "../../workflow"
 
 import {
 	type AnthropicReasoningParams,
@@ -96,11 +100,21 @@ const computedMaxTokens = getModelMaxOutputTokens({
 	format,
 })
 
-// Apply workflow mode-based token budget override
+// V6-WORKFLOW-PATCH (Phase C):
+// 1. Per-mode token budget (existing behavior).
+// 2. Per-mode model override is surfaced to globalThis for the dashboard
+//    status bar; actual model swap stays a configuration concern (the
+//    user picks a model in Roo Code settings and the dashboard guides
+//    them via /api/config/models). This keeps a single source of truth.
 const activeMode = (globalThis as any).__rooWorkflowMode
 const maxTokens = activeMode && computedMaxTokens !== undefined
 	? resolveTokenBudget(activeMode, computedMaxTokens)
 	: computedMaxTokens
+
+if (activeMode) {
+	const override = resolveModelOverride(activeMode)
+	;(globalThis as any).__rooWorkflowModelOverride = override?.modelId ?? null
+}
 
 
 	let temperature = customTemperature ?? model.defaultTemperature ?? defaultTemperature

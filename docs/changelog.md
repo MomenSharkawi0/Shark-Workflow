@@ -2,6 +2,48 @@
 
 All notable changes to Roo Workflow are documented here.
 
+## v6.0.0 — PRD Ingestion + Per-phase Model Routing (2026-05-01)
+
+The first V6 release. Two foundational additions; phases B / D / E (stack-recommendation engine, semantic gates, stack-aware prompts) ship in V6.1+.
+
+### Phase A — PRD Ingestion + Plan Reconciliation
+
+- **New** `roo-code-fork/src/workflow/PrdInterpreter.ts` (264 LOC) — pure heuristic markdown classifier + field extractor. No LLM call. Detects PRD-shaped vs plan-shaped vs hybrid markdown via heading signals. Extracts `projectName`, `summary`, `dataModel`, `constraints`, `successCriteria`, `stackHints` with per-field 0–1 confidence.
+- **New** `roo-code-fork/src/workflow/PlanReconciler.ts` (130 LOC) — produces gate-compliant `{phasePlan, detailedPlan, planReview}` triplets from any markdown. Original input always preserved verbatim under `## Original Plan`. Replaces the legacy "Injected externally" dummy files.
+- **New** dual JS mirror at `workflow-dashboard/lib/{prdInterpreter,planReconciler}.js` so the standalone Express server can run the same heuristics without a TypeScript toolchain.
+- **New** `POST /api/ingest/prd` (dashboard) — body `{ markdown, mode: "interpret"|"reconcile" }`. Returns `{ kind, confidence, fields, signals }`, plus `reconciled` + `featureRequest` when mode=reconcile. 1 MB body cap.
+- **New** `GET /api/ingest/sample` (dashboard) — returns the orphaned `HR_Platform_PRD.md` as demo payload. The orphan is now sample data.
+- **New** `POST /api/ingest/interpret` (bridge) — graceful stub for V6.0; will gain LLM uplift in V6.1 when Roo Code exposes a synchronous one-shot completion API.
+- **Extended** `WorkflowEngine.startCycle()` with `prefilledFeatureRequest` and `reconciledPlan` options. When provided, the engine writes the full PHASE_PLAN/DETAILED_PLAN/PLAN_REVIEW/PLAN_APPROVED triplet so gates 1–3 pass with real content rather than dummies.
+- **Rewrote** `orchestrator.ps1 -InjectPlan` to call the dashboard's reconciler when reachable. Legacy dummy-file fallback retained for when the dashboard isn't running, with a warning to start it for proper reconciliation.
+- **New** `prd-interpreter` mode registered in `init-workflow.ps1`'s generated `.roomodes` and in `ContextInjector`'s per-mode context map (just `wizard-options.json`).
+- **New** dashboard "Import PRD or Plan" panel — paste markdown, drag-drop a file, or load the bundled HR sample. Confidence-coloured field chips (HIGH / MED / LOW). Two actions: "Apply to wizard" or "Use as plan, skip planning".
+- **7 new tests** (Suite 12) covering classification, reconciliation, gate-regex compliance, and `-InjectPlan` regression.
+
+### Phase C — Per-phase Model Routing
+
+- **New** `roo-code-fork/src/workflow/ModelAdvisor.ts` (180 LOC) — preset routing matrix for budget / balanced / premium tiers. Maps intent labels (`small-fast`, `mid-balanced`, `large-smart`) to ranked candidate model ids per provider (Anthropic / OpenAI / Gemini / DeepSeek). Auto-bumps tier for very large projects.
+- **Extended** `WorkflowConfig` with `perPhaseModels: boolean` (feature flag, default OFF) and `modelByMode: Record<mode, {modelId, provider?}>`.
+- **New** `resolveModelOverride(activeMode)` exported from `roo-code-fork/src/workflow/index.ts`. Sibling of `resolveTokenBudget`. Returns null when feature flag is off or no override is configured — completely dormant by default.
+- **Patched** `roo-code-fork/src/api/transform/model-params.ts` (sentinel-marked `// V6-WORKFLOW-PATCH`) to call `resolveModelOverride(activeMode)` and surface the chosen model id to `globalThis.__rooWorkflowModelOverride` so the dashboard status surface can show "EXEC · sonnet-4.5 · 32k". Localised one-line invocation; merge-conflict-friendly.
+- **New** `GET/POST /api/config/models` (dashboard) — read + persist routing config to `WORKFLOW/workflow-config.json`. Atomic write, schema validation.
+- **New** `GET /api/models/list` (bridge → dashboard proxy) — enumerates models the user has credentials for, falling back to the intent-candidate union when the provider's registry isn't accessible.
+- **New** `GET /api/models/recommend` (bridge → dashboard proxy) — calls `ModelAdvisor.recommendRouting` with detected stack + estimated project size + budget tier.
+- **New** dashboard "Model Routing" panel — collapsible, per-mode dropdowns, three tier presets (Budget / Balanced / Premium), one-click "AI recommend" button, "Enable per-phase routing" toggle.
+- **6 new tests** (Suite 13) covering config round-trip, validation rejection, and bridge-offline graceful degradation.
+
+### Test suite
+
+- **75/75 green** (was 69; +6 for model routing). 30 sec full-run.
+
+### Architectural notes
+
+- The bridge's `/api/ingest/interpret` is a graceful stub for V6.0. The heuristic interpreter handles structured PRDs (like the HR fixture) on its own with high confidence. V6.1 will add LLM uplift via async polling once Roo Code exposes the right hook.
+- Per-phase model routing uses `globalThis.__rooWorkflowMode` as the single coupling point with `model-params.ts`. Single sentinel-marked patch (`// V6-WORKFLOW-PATCH`) for clean upstream merges.
+- Phases B (stack-recommendation engine), D (semantic LLM-as-Judge gates), and E (stack-aware phase prompts) are explicitly out of scope for V6.0 and tracked as V6.1+.
+
+---
+
 ## v3.2.0 — Hardening & Correctness (2026-04-30)
 
 A focused bugfix and security release that closes 16 distinct defects identified in a thorough audit. **No breaking changes** for normal usage; if you were relying on a buggy behavior (e.g. snapshots restored to project root) the fix may behave differently.
