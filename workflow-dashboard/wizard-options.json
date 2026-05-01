@@ -265,6 +265,11 @@
       { "id": "cypress",    "label": "Cypress" },
       { "id": "puppeteer",  "label": "Puppeteer" },
       { "id": "selenium",   "label": "Selenium" }
+    ],
+    "modes": [
+      { "id": "tdd",      "label": "TDD — write tests first, executor must run them" },
+      { "id": "post-hoc", "label": "Post-hoc — write tests alongside code (default)" },
+      { "id": "none",     "label": "None — no tests required (Gate 4 accepts skip marker)" }
     ]
   }
 }

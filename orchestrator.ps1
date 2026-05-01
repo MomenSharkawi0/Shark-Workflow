@@ -371,7 +371,9 @@ function Write-StatusFile {
         [string]$Status = "IN_PROGRESS",
         [string]$BlockedReason = "",
         [string]$PreviousState = "",
-        [bool]$Autopilot = $false
+        [bool]$Autopilot = $false,
+        [int]$PhaseIndex = 0,
+        [int]$PhaseTotal = 0
     )
 
     # Read existing JSON once so we can preserve fields the caller didn't touch.
@@ -396,6 +398,12 @@ function Write-StatusFile {
         $CycleId = [guid]::NewGuid().ToString().Substring(0,8)
     }
 
+    # Preserve phaseIndex/phaseTotal across writes when caller didn't supply them.
+    $effectivePhaseIndex = if ($PSBoundParameters.ContainsKey('PhaseIndex') -and $PhaseIndex -gt 0) { $PhaseIndex }
+                           elseif ($existing -and $existing.phaseIndex) { [int]$existing.phaseIndex } else { 0 }
+    $effectivePhaseTotal = if ($PSBoundParameters.ContainsKey('PhaseTotal') -and $PhaseTotal -gt 0) { $PhaseTotal }
+                           elseif ($existing -and $existing.phaseTotal) { [int]$existing.phaseTotal } else { 0 }
+
     $json = [ordered]@{
         schemaVersion    = $Script:StatusSchemaVersion
         currentState     = $State
@@ -412,10 +420,92 @@ function Write-StatusFile {
         blockedReason    = $BlockedReason
         autopilot        = $Autopilot
         parallelTracks   = $parallelTracks
+        phaseIndex       = $effectivePhaseIndex
+        phaseTotal       = $effectivePhaseTotal
     }
 
     $jsonString = $json | ConvertTo-Json -Depth 3
     Invoke-AtomicJsonWrite -Path $StatusFile -JsonContent $jsonString
+}
+
+function Get-WorkflowConfig {
+    <#
+    .SYNOPSIS
+        Reads WORKFLOW/workflow-config.json with sensible defaults. Returns a
+        hashtable so callers can use ContainsKey checks. Missing fields fall
+        back to defaults; corrupted JSON is reported once and defaults used.
+    #>
+    $defaults = @{
+        testingMode  = 'post-hoc'   # 'tdd' | 'post-hoc' | 'none'
+        strictReview = $false
+    }
+
+    $configPath = Join-Path $WorkflowDir 'workflow-config.json'
+    if (-not (Test-Path $configPath)) {
+        return $defaults
+    }
+
+    try {
+        $raw = Get-Content $configPath -Raw -Encoding UTF8
+        $cfg = $raw | ConvertFrom-Json
+
+        $merged = @{}
+        foreach ($k in $defaults.Keys) { $merged[$k] = $defaults[$k] }
+        if ($cfg.PSObject.Properties.Match('testingMode').Count -gt 0 -and $cfg.testingMode) {
+            $merged.testingMode = [string]$cfg.testingMode
+        }
+        if ($cfg.PSObject.Properties.Match('strictReview').Count -gt 0) {
+            $merged.strictReview = [bool]$cfg.strictReview
+        }
+        return $merged
+    } catch {
+        Write-Log -Level WARN -Message "Could not parse workflow-config.json -- using defaults. ($_)"
+        return $defaults
+    }
+}
+
+function Write-CurrentInstruction {
+    <#
+    .SYNOPSIS
+        Writes WORKFLOW/ACTIVE/CURRENT_INSTRUCTION.md so the active agent always
+        has a fresh "what to do now" prompt. Injected by ContextInjector for
+        every Roo mode and read by the `roo-code.resumeWorkflow` command.
+        Wiped on every transition so stale instructions never linger.
+    #>
+    param(
+        [string]$State,
+        [string]$ActiveMode,
+        [string]$Instruction
+    )
+
+    if (-not (Test-Path $ActiveDir)) {
+        New-Item -ItemType Directory -Path $ActiveDir -Force | Out-Null
+    }
+
+    $timestamp = Get-Date -Format 'o'
+    $modeLabel = if ($ActiveMode) { $ActiveMode.ToUpper() } else { '(workflow paused -- no active role)' }
+    $instructionText = if ($Instruction) { $Instruction } else { 'No further action required for this state.' }
+
+    $content = @"
+# Current Instruction
+
+> Auto-written by ``orchestrator.ps1`` on every state transition. Always reflects the next action for the active role. Safe to overwrite.
+
+- **State:** $State
+- **Active Mode:** $modeLabel
+- **Updated:** $timestamp
+
+## What to do now
+
+$instructionText
+
+---
+
+If you are reading this in a fresh agent turn, that means the workflow just transitioned roles. Adopt the **$modeLabel** persona, perform the action above, and (if autopilot is ON in ``ORCHESTRATION_STATUS.json``) run ``.\orchestrator.ps1 -Next`` when finished.
+"@
+
+    $instructionPath = Join-Path $ActiveDir 'CURRENT_INSTRUCTION.md'
+    Set-Content -Path $instructionPath -Value $content -Encoding UTF8
 }
 
 function Invoke-ManifestCheck {
@@ -574,6 +664,50 @@ function Write-QualityGateResult {
     }
 
     Add-Content -Path $DashboardFile -Value $entry
+}
+
+function Test-ExecutionReportGate {
+    <#
+    .SYNOPSIS
+        Gate 4 logic shared by EXECUTION, EXECUTION_BACKEND, EXECUTION_FRONTEND.
+        Accepts "## Files Modified", "## Files Created", or "## Files Changed".
+        Tests-Run section is required unless workflow-config.json sets
+        testingMode=none, in which case `_Skipped: testingMode=none_` (anywhere
+        in the report) also satisfies the test requirement.
+
+        NOTE: Keep this in sync with GateValidator.ts (the in-editor twin).
+    #>
+    param(
+        [string]$Content,
+        [string]$ReportLabel,
+        [string]$GateLabel,
+        [string]$GateName
+    )
+
+    $missing = @()
+
+    if ($Content -notmatch '(?m)^##\s+Files (Modified|Created|Changed)\b') {
+        $missing += 'Files Modified|Created|Changed'
+    }
+
+    $cfg = Get-WorkflowConfig
+    $testingMode = if ($cfg.ContainsKey('testingMode')) { $cfg.testingMode } else { 'post-hoc' }
+    $hasTestsHeader = $Content -match '(?m)^##\s+Tests Run\b'
+    $hasSkipMarker  = $Content -match '_Skipped:\s*testingMode=none_'
+
+    if ($testingMode -eq 'none') {
+        if (-not ($hasTestsHeader -or $hasSkipMarker)) {
+            $missing += 'Tests Run (or _Skipped: testingMode=none_ marker)'
+        }
+    } else {
+        if (-not $hasTestsHeader) { $missing += 'Tests Run' }
+    }
+
+    if ($missing.Count -gt 0) {
+        throw "Quality Gate $GateLabel FAILED: $ReportLabel missing required sections: $($missing -join ', ')."
+    }
+
+    Write-QualityGateResult -GateNumber 4 -GateName $GateName -Passed $true -Notes "Report sections found (testingMode=$testingMode)"
 }
 
 function Test-QualityGate {
@@ -824,6 +958,8 @@ function Invoke-StateTransition {
         Invoke-ManifestCheck
         $newCycleId = [guid]::NewGuid().ToString().Substring(0,8)
         Write-StatusFile -State "PHASE_PLANNING" -PreviousState "INIT" -Phase "" -CycleStart (Get-Date -Format "o") -CycleId $newCycleId -TransitionCount 1
+        $initConfig = $StateConfigs["PHASE_PLANNING"]
+        Write-CurrentInstruction -State "PHASE_PLANNING" -ActiveMode $initConfig.ActiveMode -Instruction $initConfig.Instruction
         Write-Host "State: PHASE_PLANNING (cycle $newCycleId)" -ForegroundColor Yellow
         Write-Host "Next: Switch to Director mode and write PHASE_PLAN.md" -ForegroundColor White
         Invoke-GitCommit -FromState "INIT" -ToState "PHASE_PLANNING" -PhaseName "" -TransitionCount 1
@@ -895,37 +1031,13 @@ function Invoke-StateTransition {
                 Write-QualityGateResult -GateNumber 3 -GateName "Plan Review Valid" -Passed $true -Notes $gateNotes
             }
             "EXECUTION" {
-                # Gate 4: EXECUTION_REPORT.md must have BOTH Files Modified AND Tests Run sections
-                $missing = @()
-                if ($fileContent -notmatch '(?m)^##\s+Files Modified\b') { $missing += 'Files Modified' }
-                if ($fileContent -notmatch '(?m)^##\s+Tests Run\b')      { $missing += 'Tests Run' }
-                if ($missing.Count -gt 0) {
-                    throw "Quality Gate 4 FAILED: EXECUTION_REPORT.md missing required sections: $($missing -join ', ')."
-                }
-                $gateNotes = "Report sections found"
-                Write-QualityGateResult -GateNumber 4 -GateName "Execution Report Valid" -Passed $true -Notes $gateNotes
+                Test-ExecutionReportGate -Content $fileContent -ReportLabel 'EXECUTION_REPORT.md' -GateLabel '4' -GateName 'Execution Report Valid'
             }
             "EXECUTION_BACKEND" {
-                # Gate 4a: EXECUTION_REPORT_BACKEND.md must have BOTH Files Modified AND Tests Run
-                $missing = @()
-                if ($fileContent -notmatch '(?m)^##\s+Files Modified\b') { $missing += 'Files Modified' }
-                if ($fileContent -notmatch '(?m)^##\s+Tests Run\b')      { $missing += 'Tests Run' }
-                if ($missing.Count -gt 0) {
-                    throw "Quality Gate 4a FAILED: EXECUTION_REPORT_BACKEND.md missing required sections: $($missing -join ', ')."
-                }
-                $gateNotes = "Backend report sections found"
-                Write-QualityGateResult -GateNumber 4 -GateName "Backend Execution Report Valid" -Passed $true -Notes $gateNotes
+                Test-ExecutionReportGate -Content $fileContent -ReportLabel 'EXECUTION_REPORT_BACKEND.md' -GateLabel '4a' -GateName 'Backend Execution Report Valid'
             }
             "EXECUTION_FRONTEND" {
-                # Gate 4b: EXECUTION_REPORT_FRONTEND.md must have BOTH Files Modified AND Tests Run
-                $missing = @()
-                if ($fileContent -notmatch '(?m)^##\s+Files Modified\b') { $missing += 'Files Modified' }
-                if ($fileContent -notmatch '(?m)^##\s+Tests Run\b')      { $missing += 'Tests Run' }
-                if ($missing.Count -gt 0) {
-                    throw "Quality Gate 4b FAILED: EXECUTION_REPORT_FRONTEND.md missing required sections: $($missing -join ', ')."
-                }
-                $gateNotes = "Frontend report sections found"
-                Write-QualityGateResult -GateNumber 4 -GateName "Frontend Execution Report Valid" -Passed $true -Notes $gateNotes
+                Test-ExecutionReportGate -Content $fileContent -ReportLabel 'EXECUTION_REPORT_FRONTEND.md' -GateLabel '4b' -GateName 'Frontend Execution Report Valid'
             }
             "EXECUTION_REVIEW" {
                 # Gate 5: EXECUTION_REVIEW.md must have STATUS field
@@ -989,6 +1101,8 @@ function Invoke-StateTransition {
                         -NextMode "" `
                         -Status "BLOCKED" `
                         -BlockedReason "Retry limit reached at $currentState (max $maxRetries)."
+
+                    Write-CurrentInstruction -State $currentState -ActiveMode "" -Instruction "Workflow BLOCKED at 5-strike limit. Read WORKFLOW/ACTIVE/ESCALATION.md, fix the root cause manually, then run ``.\orchestrator.ps1 -Resume``."
 
                     Send-WebhookNotification -State $currentState -Phase $statusData["Phase"] -Status "BLOCKED" -Message "5-strike retry limit reached. See ESCALATION.md."
 
@@ -1105,22 +1219,96 @@ function Invoke-StateTransition {
         Send-WebhookNotification -State "COMPLETE" -Phase $phaseName -Status "COMPLETE" -Message "Workflow cycle completed successfully."
     }
 
+    # --- Multi-phase auto-advance: pop the next phase off PHASE_QUEUE.json -------
+    # When a reconciler-generated queue exists, ARCHIVE -> COMPLETE re-routes
+    # back into PHASE_PLANNING with the next phase's content pre-loaded.
+    # Failure to read/parse the queue degrades gracefully: cycle ends terminal.
+    $phaseIndex = 0
+    $phaseTotal = 0
+    $queuePath = Join-Path $WorkflowDir 'PHASE_QUEUE.json'
+    if ($currentState -eq "ARCHIVE" -and $nextState -eq "COMPLETE" -and (Test-Path $queuePath)) {
+        try {
+            $queue = Get-Content $queuePath -Raw -Encoding UTF8 | ConvertFrom-Json
+            $cursor = if ($queue.PSObject.Properties.Match('cursor').Count -gt 0) { [int]$queue.cursor } else { 0 }
+            $cycles = $queue.cycles
+            $totalCycles = if ($cycles) { @($cycles).Count } else { 0 }
+            $nextCursor = $cursor + 1
+
+            if ($totalCycles -gt 0 -and $nextCursor -lt $totalCycles) {
+                $next = $cycles[$nextCursor]
+                $nextTitle = if ($next.title) { [string]$next.title } else { "Phase $($next.number)" }
+                $nextBody  = if ($next.body)  { [string]$next.body  } else { '' }
+                $projectName = if ($queue.PSObject.Properties.Match('projectName').Count -gt 0) { [string]$queue.projectName } else { 'Untitled Project' }
+
+                # Pre-populate ACTIVE/PHASE_PLAN.md with the queued phase's content.
+                $newPhasePlan = @"
+# Phase Plan -- $projectName
+
+## Phase $($next.number): $nextTitle
+
+$nextBody
+
+---
+
+_Auto-loaded from WORKFLOW/PHASE_QUEUE.json (cursor=$nextCursor of $totalCycles). Director should refine and confirm before -Next._
+"@
+                Set-Content -Path (Join-Path $ActiveDir 'PHASE_PLAN.md') -Value $newPhasePlan -Encoding UTF8
+
+                # Advance the queue cursor (atomic).
+                $queue.cursor = $nextCursor
+                Invoke-AtomicJsonWrite -Path $queuePath -JsonContent ($queue | ConvertTo-Json -Depth 6)
+
+                # Re-route to PHASE_PLANNING instead of terminal COMPLETE.
+                $nextState = "PHASE_PLANNING"
+                $phaseIndex = $nextCursor + 1
+                $phaseTotal = $totalCycles
+
+                Write-Host "`n=== PHASE QUEUE: ADVANCING TO PHASE $phaseIndex of $phaseTotal ===" -ForegroundColor Cyan
+                Write-Host "Title: $nextTitle" -ForegroundColor Yellow
+            } else {
+                # Queue exhausted -- clean up and let cycle end terminally.
+                Remove-Item $queuePath -Force -ErrorAction SilentlyContinue
+                Write-Log -Level INFO -Message "PHASE_QUEUE.json exhausted ($totalCycles cycles complete) -- workflow terminates."
+            }
+        } catch {
+            Write-Log -Level WARN -Message "Could not parse PHASE_QUEUE.json -- cycle terminating normally. ($_)"
+        }
+    } elseif ((Test-Path $queuePath) -and $nextState -eq "COMPLETE") {
+        # Cursor metadata for status display even on intermediate transitions.
+        try {
+            $queue = Get-Content $queuePath -Raw -Encoding UTF8 | ConvertFrom-Json
+            $cursor = if ($queue.PSObject.Properties.Match('cursor').Count -gt 0) { [int]$queue.cursor } else { 0 }
+            $totalCycles = if ($queue.cycles) { @($queue.cycles).Count } else { 0 }
+            $phaseIndex = $cursor + 1
+            $phaseTotal = $totalCycles
+        } catch { }
+    }
+
     $transitionCount = [int]$statusData["Transition Count"] + 1
     $nextConfig = $StateConfigs[$nextState]
 
     $newStatus = if ($nextState -eq "COMPLETE") { "COMPLETE" } else { "IN_PROGRESS" }
 
-    Write-StatusFile -State $nextState `
-        -PreviousState $currentState `
-        -Phase $statusData["Phase"] `
-        -CycleStart $statusData["Cycle Start"] `
-        -CycleId $statusData["Cycle Id"] `
-        -LastTransition (Get-Date -Format "o") `
-        -TransitionCount $transitionCount `
-        -RetryCount $statusData["Retry Count"] `
-        -NextAction $nextConfig.Instruction `
-        -NextMode $nextConfig.ActiveMode `
-        -Status $newStatus
+    $statusFileArgs = @{
+        State            = $nextState
+        PreviousState    = $currentState
+        Phase            = $statusData["Phase"]
+        CycleStart       = $statusData["Cycle Start"]
+        CycleId          = $statusData["Cycle Id"]
+        LastTransition   = (Get-Date -Format "o")
+        TransitionCount  = $transitionCount
+        RetryCount       = $statusData["Retry Count"]
+        NextAction       = $nextConfig.Instruction
+        NextMode         = $nextConfig.ActiveMode
+        Status           = $newStatus
+    }
+    if ($phaseIndex -gt 0) { $statusFileArgs.PhaseIndex = $phaseIndex }
+    if ($phaseTotal -gt 0) { $statusFileArgs.PhaseTotal = $phaseTotal }
+    Write-StatusFile @statusFileArgs
+
+    # Tickle file: fresh "what to do now" prompt for the next agent turn.
+    # Read by ContextInjector for every mode + by roo-code.resumeWorkflow.
+    Write-CurrentInstruction -State $nextState -ActiveMode $nextConfig.ActiveMode -Instruction $nextConfig.Instruction
 
     # --- Diff-based Code Review (Phase 5d) ---
     if ($currentState -match "^EXECUTION" -and $nextState -eq "EXECUTION_REVIEW") {
@@ -1549,6 +1737,8 @@ $complexity
         -Status "IN_PROGRESS" `
         -Autopilot $false
 
+    Write-CurrentInstruction -State "PHASE_PLANNING" -ActiveMode $StateConfigs["PHASE_PLANNING"].ActiveMode -Instruction $StateConfigs["PHASE_PLANNING"].Instruction
+
     # Enable parallel tracks in status JSON if monorepo
     if ($parallel) {
         try {
@@ -1573,6 +1763,7 @@ $complexity
 function Invoke-ResetWorkflow {
     Write-Host "`nResetting workflow to INIT state..." -ForegroundColor Yellow
     Write-StatusFile -State "INIT" -Status "IN_PROGRESS"
+    Write-CurrentInstruction -State "INIT" -ActiveMode "" -Instruction "Workflow has been reset. Provide a feature request or run -Plan to start a new cycle."
 
     # Clean ACTIVE directory of stale files (keep QUALITY_GATES.md)
     if (Test-Path $ActiveDir) {
@@ -1633,6 +1824,8 @@ function Invoke-UndoTransition {
             -NextMode $prevConfig.ActiveMode `
             -Status "IN_PROGRESS"
 
+        Write-CurrentInstruction -State $prevState -ActiveMode $prevConfig.ActiveMode -Instruction $prevConfig.Instruction
+
         Write-Host "`n=== STATE ROLLBACK ===" -ForegroundColor Magenta
         Write-Host "From: $currentState" -ForegroundColor Gray
         Write-Host "Back to: $prevState" -ForegroundColor Yellow
@@ -1669,6 +1862,8 @@ function Invoke-ResumeExecution {
             -NextAction $config.Instruction `
             -NextMode $config.ActiveMode `
             -Status "IN_PROGRESS"
+
+        Write-CurrentInstruction -State "EXECUTION" -ActiveMode $config.ActiveMode -Instruction $config.Instruction
 
         Write-Host "`n=== RESUME ===" -ForegroundColor Cyan
         Write-Host "RetryCount reset to 0. EXECUTION state maintained." -ForegroundColor Green
@@ -1764,7 +1959,7 @@ try {
 
         # 3. Try to call the dashboard's /api/ingest/prd?mode=reconcile endpoint.
         #    The reconciler preserves the user's original markdown verbatim under
-        #    `## Original Plan` AND produces gate-compliant headings — replacing
+        #    `## Original Plan` AND produces gate-compliant headings -- replacing
         #    the legacy hard-coded dummies that lost user intent.
         $sourceMarkdown = Get-Content -Path $InjectPlan -Raw -Encoding UTF8
         $reconciled = $null
@@ -1784,35 +1979,41 @@ try {
         }
 
         if ($reconciled) {
-            # 4a. V6 path — use reconciled triplet, preserves original under ## Original Plan
+            # 4a. V6 path -- use reconciled triplet, preserves original under ## Original Plan.
+            # Reconciler emits STATUS: PENDING -- the Director must replace it with
+            # APPROVED or NEEDS_REVISION before -Next will pass Gate 3.
             Set-Content -Path (Join-Path $ActiveDir "PHASE_PLAN.md")    -Value $reconciled.phasePlan    -Encoding UTF8
             Set-Content -Path (Join-Path $ActiveDir "DETAILED_PLAN.md") -Value $reconciled.detailedPlan -Encoding UTF8
             Set-Content -Path (Join-Path $ActiveDir "PLAN_REVIEW.md")   -Value $reconciled.planReview   -Encoding UTF8
-            Set-Content -Path (Join-Path $ActiveDir "PLAN_APPROVED.md") -Value $reconciled.detailedPlan -Encoding UTF8
-            Write-Host "  Wrote reconciled PHASE_PLAN.md, DETAILED_PLAN.md, PLAN_REVIEW.md (APPROVED), PLAN_APPROVED.md" -ForegroundColor Green
+
+            # Multi-phase: persist queue so subsequent cycles auto-start on COMPLETE.
+            if ($reconciled.PSObject.Properties.Match('phaseQueue').Count -gt 0 -and $reconciled.phaseQueue -and $reconciled.phaseQueue.cycles.Count -gt 1) {
+                $queuePath = Join-Path $WorkflowDir 'PHASE_QUEUE.json'
+                $queueJson = $reconciled.phaseQueue | ConvertTo-Json -Depth 6
+                Invoke-AtomicJsonWrite -Path $queuePath -JsonContent $queueJson
+                Write-Host "  Wrote PHASE_QUEUE.json with $($reconciled.phaseQueue.cycles.Count) phases" -ForegroundColor Cyan
+            }
+
+            Write-Host "  Wrote reconciled PHASE_PLAN.md, DETAILED_PLAN.md, PLAN_REVIEW.md (PENDING -- Director must approve)" -ForegroundColor Green
         }
         else {
-            # 4b. Legacy fallback — only when the dashboard isn't running.
-            Copy-Item -Path $InjectPlan -Destination (Join-Path $ActiveDir "PLAN_APPROVED.md") -Force
+            # 4b. Legacy fallback -- only when the dashboard isn't running.
             $dummyPhase = "# Phase Plan`n`n## Phase 1: Injected`nGoal: Injected externally (legacy fallback).`nScope: All.`nDependencies: None.`nSuccess Criteria: Executed.`n"
             Set-Content -Path (Join-Path $ActiveDir "PHASE_PLAN.md") -Value $dummyPhase -Encoding UTF8
-            $dummyDetailed = "# Detailed Plan`n## Summary`nInjected externally (legacy fallback).`n## Files to Modify`n| File | Action |`n|------|--------|`n| .    | MODIFY |`n## Implementation Steps`nSee PLAN_APPROVED.md for the original source.`n"
+            $dummyDetailed = (Get-Content $InjectPlan -Raw) + "`n`n## Files to Modify`n| File | Action |`n|------|--------|`n| _to be enumerated by the Director_ | _MODIFY/CREATE_ |`n`n## Implementation Steps`n_To be enumerated by the Director from the source above._`n"
             Set-Content -Path (Join-Path $ActiveDir "DETAILED_PLAN.md") -Value $dummyDetailed -Encoding UTF8
-            $dummyReview = "# Plan Review`nSTATUS: APPROVED`nPlan injected via -InjectPlan (legacy fallback path; dashboard offline).`n"
+            $dummyReview = "# Plan Review`n`nSTATUS: PENDING -- Director must review DETAILED_PLAN.md and replace this line with APPROVED or NEEDS_REVISION.`n`n## Reviewer Notes`nPlan injected via -InjectPlan (legacy fallback path; dashboard offline).`n"
             Set-Content -Path (Join-Path $ActiveDir "PLAN_REVIEW.md") -Value $dummyReview -Encoding UTF8
             Write-Log -Level WARN -Message "Used legacy dummy-file injection. Start the dashboard (npm start --prefix workflow-dashboard) to enable V6 reconciliation that preserves your original plan."
         }
 
-        # 5. Run pre-flight check before jumping into EXECUTION
-        Invoke-PreflightCheck
-
-        # 6. Update Status
+        # 5. Land in PLAN_REVIEW so the Director must actually review before EXECUTION.
         $currentState = Get-CurrentState
         $statusData = Get-StatusData -State $currentState
-        $nextConfig = $StateConfigs["EXECUTION"]
+        $nextConfig = $StateConfigs["PLAN_REVIEW"]
         $transitionCount = [int]$statusData["Transition Count"] + 3
         $newCycleId = [guid]::NewGuid().ToString().Substring(0,8)
-        Write-StatusFile -State "EXECUTION" `
+        Write-StatusFile -State "PLAN_REVIEW" `
             -PreviousState $currentState `
             -Phase "Injected Plan" `
             -CycleStart (Get-Date -Format "o") `
@@ -1824,10 +2025,12 @@ try {
             -NextMode $nextConfig.ActiveMode `
             -Status "IN_PROGRESS"
 
-        Invoke-GitCommit -FromState "INJECT" -ToState "EXECUTION" -PhaseName "Injected Plan" -TransitionCount $transitionCount
+        Write-CurrentInstruction -State "PLAN_REVIEW" -ActiveMode $nextConfig.ActiveMode -Instruction $nextConfig.Instruction
 
-        Write-Host "  Status updated to EXECUTION. Transitions bumped by 3." -ForegroundColor Green
-        Write-Host "`nSUCCESS: Plan injected. Switch to EXECUTOR mode to begin." -ForegroundColor Green
+        Invoke-GitCommit -FromState "INJECT" -ToState "PLAN_REVIEW" -PhaseName "Injected Plan" -TransitionCount $transitionCount
+
+        Write-Host "  Status set to PLAN_REVIEW. Director must review DETAILED_PLAN.md and stamp APPROVED before -Next will advance." -ForegroundColor Green
+        Write-Host "`nSUCCESS: Plan injected. Switch to DIRECTOR mode to review." -ForegroundColor Green
     }
     else {
         Write-Host "Roo Code Workflow Orchestrator v3" -ForegroundColor Cyan

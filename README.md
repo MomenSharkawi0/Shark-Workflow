@@ -2,9 +2,9 @@
 
 > A multi-agent orchestration framework that turns [Roo Code](https://github.com/RooCodeInc/Roo-Code) into a structured **software factory**: enforced state machine, persistent memory, quality gates, and full autopilot.
 
-[![Version](https://img.shields.io/badge/version-3.2.0-blue.svg)](docs/changelog.md)
+[![Version](https://img.shields.io/badge/version-6.1.0-blue.svg)](docs/changelog.md)
 [![License](https://img.shields.io/badge/license-Apache%202.0-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-50%2F50%20passing-brightgreen.svg)](tests/README.md)
+[![Tests](https://img.shields.io/badge/tests-79%2F79%20passing-brightgreen.svg)](tests/README.md)
 [![PowerShell](https://img.shields.io/badge/PowerShell-7%2B-5391FE.svg)](https://github.com/PowerShell/PowerShell)
 [![Node](https://img.shields.io/badge/node-%E2%89%A518-339933.svg)](https://nodejs.org/)
 
@@ -27,6 +27,21 @@ INIT  →  PHASE_PLANNING  →  DETAILED_PLANNING  →  PLAN_REVIEW  →  EXECUT
 ```
 
 ---
+
+## What's new in V6.1 (reliability fixes)
+
+V6.1 is a focused reliability release that fixes six interlocking failure modes surfaced in real-world V6.0 sessions. Test count: **79/79 green** (up from 75). See [docs/changelog.md](docs/changelog.md) for full details.
+
+| Fix | Problem | Resolution |
+|---|---|---|
+| **Autopilot stall** | Workflow froze at `PLAN_REVIEW`; mode swapped silently but the agent thread was idle | Orchestrator writes `WORKFLOW/ACTIVE/CURRENT_INSTRUCTION.md` on every transition; ContextInjector pulls it into every role's prompt; the watcher pushes a follow-up message after every mode swap; new `▶ Resume Workflow` status-bar button as fallback |
+| **Gate 4 false-positives** | Failed when only new files existed (no `## Files Modified`) or when the user opted out of tests | Gate 4 accepts `## Files Modified|Created|Changed` (alternation). New `testingMode: "tdd" | "post-hoc" | "none"` config field; `_Skipped: testingMode=none_` marker satisfies the test requirement when opted out |
+| **Director rubber-stamp** | Reconciler hardcoded `STATUS: APPROVED`; engine pre-wrote `PLAN_APPROVED.md`; `-InjectPlan` jumped straight to EXECUTION | Reconciler emits `STATUS: PENDING`; engine no longer pre-writes `PLAN_APPROVED.md`; `-InjectPlan` lands in `PLAN_REVIEW` so Director must actually approve. Director rules now have 8 explicit rejection criteria |
+| **Multi-phase collapse** | PRDs with 13 modules or 10 levels ran as one giant cycle | New `extractPhases()` + `WORKFLOW/PHASE_QUEUE.json`; orchestrator auto-restarts at `PHASE_PLANNING` with the next phase pre-loaded on every `ARCHIVE → COMPLETE`; dashboard shows "Phase 3 of 10" |
+| **Director context** | Director never received `DETAILED_PLAN.md` when reviewing | ContextInjector now feeds Director both `PHASE_PLAN.md` and `DETAILED_PLAN.md` plus the tickle file. SELF_REVIEW_CHECKLIST gained 9 machine-checkable assertions |
+| **Dashboard sync** | Mode swaps in VS Code invisible; deliverable creation didn't surface | New `WORKFLOW/CURRENT_MODE.json` sidecar (written by extension); deliverable existence checks in the 800ms poll loop; "▶ Click Next to advance" CTA when the current step's file exists |
+
+**Chat continuity rule:** Stay in the same chat for the entire project. Workflow Master persists its role-shifting behavior across queued phases — opening a new chat resets working memory.
 
 ## What's new in V6
 
@@ -183,6 +198,9 @@ graph TB
 | `WORKFLOW/PHASE_DNA.md` | Director, orchestrator (auto-snapshot) | All modes |
 | `WORKFLOW/METRICS.json` | orchestrator.ps1 | Dashboard |
 | `WORKFLOW/QUALITY_DASHBOARD.md` | orchestrator.ps1 | Dashboard |
+| `WORKFLOW/ACTIVE/CURRENT_INSTRUCTION.md` | orchestrator.ps1 | All modes (via ContextInjector) |
+| `WORKFLOW/PHASE_QUEUE.json` | PlanReconciler / WorkflowEngine | orchestrator.ps1 (auto-advance on COMPLETE) |
+| `WORKFLOW/CURRENT_MODE.json` | WorkflowWatcher (VS Code extension) | Dashboard |
 
 ---
 
@@ -312,9 +330,14 @@ pnpm install:vsix --editor=code
   "tokenBudgets":      { "planning": 150000, "execution": 500000, "review": 100000 },
   "contextSizeLimits": { "maxFileSizeBytes": 51200, "maxContextTotalBytes": 524288 },
   "pollingRateMs":     1000,
-  "autopilotSettings": { "allowFullAutonomy": false }
+  "autopilotSettings": { "allowFullAutonomy": false },
+  "testingMode":       "post-hoc",
+  "strictReview":      false
 }
 ```
+
+- **`testingMode`** (V6.1): `"tdd"` (tests first, executor must run them) | `"post-hoc"` (default — write tests alongside code) | `"none"` (Gate 4 accepts the `_Skipped: testingMode=none_` marker instead of `## Tests Run`).
+- **`strictReview`** (V6.1, advisory): when `true`, Gate 3 will additionally grep `SELF_REVIEW_CHECKLIST.md` machine-checkable assertions (currently advisory; full enforcement lands in V6.2).
 
 Environment variables:
 
@@ -354,12 +377,12 @@ If you want to expose the dashboard to your LAN, set `HOST=0.0.0.0` — but unde
 
 ## Tests
 
-Comprehensive integration suite — **50 tests across 9 suites** covering every dashboard endpoint, every quality gate, full workflow cycle (INIT → COMPLETE), control flow (Reset/Undo/Resume), plan injection, security validation, CORS, and the 5-strike enforcement.
+Comprehensive integration suite — **79 tests across 14 suites** covering every dashboard endpoint, every quality gate, full workflow cycle (INIT → COMPLETE), control flow (Reset/Undo/Resume), plan injection, security validation, CORS, the 5-strike enforcement, PRD ingestion + reconciliation, per-phase model routing, and the V6.1 reliability fixes (tickle file, Gate 4 alternation, testingMode, multi-phase queue).
 
 ```bash
-npm test                                 # all 50 tests (~30s)
+npm test                                 # all 79 tests (~33s)
 npm run test:filter "quality gates"      # filter by suite name
-node tests/api-suite.mjs --filter "input validation"
+node tests/api-suite.mjs --filter "V6.1"  # run just the reliability-fix suite
 ```
 
 The runner is **zero-dependency** (uses Node's built-in `fetch`/`child_process`/`net`), creates an **isolated temp workspace** for every run, and exits non-zero on any failure — drop it into CI directly. Details: [tests/README.md](tests/README.md).

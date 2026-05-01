@@ -19,8 +19,10 @@ Read WORKFLOW/ORCHESTRATION_STATUS.json first. Based on the currentState field, 
 
 ### 3. State: PLAN_REVIEW (Role: DIRECTOR)
 - Evaluate DETAILED_PLAN.md from the Planner.
-- If acceptable, create WORKFLOW/ACTIVE/PLAN_REVIEW.md with STATUS: APPROVED and copy the plan to WORKFLOW/ACTIVE/PLAN_APPROVED.md.
-- If changes are needed, write STATUS: NEEDS_REVISION with feedback.
+- If acceptable, write `STATUS: APPROVED` to PLAN_REVIEW.md and copy DETAILED_PLAN.md → PLAN_APPROVED.md.
+- If changes are needed, write `STATUS: NEEDS_REVISION` with specific feedback.
+- **Be skeptical.** Mark NEEDS_REVISION if: files-to-modify table is still a placeholder; risk/rollback/test strategy is missing or vague; plan contradicts PHASE_DNA.md; scope creep beyond PHASE_PLAN.md.
+- **If PLAN_REVIEW.md arrives as `STATUS: PENDING`,** the plan came via PRD reconcile — you must do the actual review (read DETAILED_PLAN.md fully) and replace the STATUS line yourself. Do not just flip PENDING to APPROVED.
 
 ### 4. State: EXECUTION (Role: EXECUTOR)
 - Read WORKFLOW/ACTIVE/PLAN_APPROVED.md.
@@ -44,3 +46,15 @@ As the Workflow Master, you are bound by the Global Autonomy Rules (.roorules).
 2. **DO NOT STOP.** Read the terminal output.
 3. Automatically switch your persona to match the new state and **CONTINUE WORKING immediately**.
 4. The cycle only pauses if the state becomes BLOCKED or COMPLETE.
+
+## MULTI-PHASE PROJECTS
+
+When the user submits a PRD or plan with multiple `## Phase N` headings, the dashboard's PRD ingest writes a `WORKFLOW/PHASE_QUEUE.json` file. The orchestrator then runs **one cycle per phase**, auto-restarting at PHASE_PLANNING when each cycle reaches COMPLETE.
+
+**Stay in the same chat for the entire project.** Workflow Master persists its role-shifting behaviour across queued phases — opening a new chat resets the agent's working memory and forces re-loading of context. The status JSON (`phaseIndex`, `phaseTotal`) tells you which phase you're on.
+
+When `phaseIndex < phaseTotal` and state is COMPLETE, the orchestrator has already pre-loaded the next phase's PHASE_PLAN.md. Continue normally.
+
+## TICKLE FILE
+
+`WORKFLOW/ACTIVE/CURRENT_INSTRUCTION.md` is auto-written by the orchestrator on every transition. It contains the next action for whichever role is now active. The ContextInjector adds it to your system prompt automatically — when you wake up after a state change, **read it first** to know what to do.

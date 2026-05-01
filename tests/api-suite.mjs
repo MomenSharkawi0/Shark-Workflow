@@ -18,7 +18,7 @@
 
 import { suite, test, beforeAll, afterAll, assert, run, http } from './lib/runner.mjs'
 import { bootDashboard, runOrchestrator, runInit, readStatus, writeFile, findFreePort, makeTempWorkspace, REPO_ROOT } from './lib/fixtures.mjs'
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 // Parse CLI flag
@@ -358,22 +358,27 @@ suite('07. Control flow: Reset / Undo / Resume', () => {
 })
 
 // =============================================================================
-// 8. -InjectPlan — bypass to EXECUTION
+// 8. -InjectPlan — lands in PLAN_REVIEW so the Director must actually approve
+//    (changed in V6.1: was EXECUTION; the auto-APPROVE shortcut was removed
+//    because it bypassed the Director and led to rubber-stamping)
 // =============================================================================
 suite('08. -InjectPlan', () => {
   test('-Reset before injecting', async () => {
     await runOrchestrator(workspace.dir, ['-Reset', '-SkipGit'])
   })
 
-  test('-InjectPlan with valid plan jumps to EXECUTION', async () => {
+  test('-InjectPlan with valid plan lands in PLAN_REVIEW (Director must approve)', async () => {
     const planPath = join(workspace.dir, '_inject_plan.md')
     writeFile(workspace.dir, '_inject_plan.md',
       '# Injected\n\n## Files to Modify\n| File | Action |\n|---|---|\n| x.md | CREATE |\n\n## Implementation Steps\n1. Inject.')
     const r = await runOrchestrator(workspace.dir, ['-InjectPlan', planPath, '-SkipGit'])
     assert.equal(r.code, 0, `inject failed: ${r.stdout}\n${r.stderr}`)
     const status = readStatus(workspace.dir)
-    assert.equal(status.currentState, 'EXECUTION')
+    assert.equal(status.currentState, 'PLAN_REVIEW')
     assert.ok(status.cycleId && status.cycleId.length >= 6)
+    // PLAN_REVIEW.md should exist with STATUS: PENDING (Director hasn't reviewed yet)
+    const planReview = readFileSync(join(workspace.dir, 'WORKFLOW/ACTIVE/PLAN_REVIEW.md'), 'utf-8')
+    assert.match(planReview, /STATUS:\s*PENDING/)
   })
 })
 
@@ -586,10 +591,13 @@ suite('12. PRD Ingestion + Plan Reconciliation', () => {
     assert.match(r.body.reconciled.detailedPlan, /^##\s+Implementation Steps\b/m)
   })
 
-  test('Reconciler — output passes Gate 3 regex (STATUS: APPROVED)', async () => {
+  test('Reconciler — emits STATUS: PENDING so Director must actually review', async () => {
+    // V6.1: was STATUS: APPROVED (auto-stamped). Removed because it let the
+    // reconciler bypass the Director entirely. Gate 3 throws on PENDING; the
+    // Director must replace this line with APPROVED or NEEDS_REVISION.
     const r = await http(`${dashboard.base}/api/ingest/prd`, { method: 'POST', body: { markdown: planStyleContent, mode: 'reconcile' } })
     assert.status(r, 200)
-    assert.match(r.body.reconciled.planReview, /STATUS:\s*APPROVED/)
+    assert.match(r.body.reconciled.planReview, /STATUS:\s*PENDING/)
   })
 
   test('Reconciler — phase plan passes Gate 1 regex (## Phase N)', async () => {
@@ -615,21 +623,94 @@ suite('12. PRD Ingestion + Plan Reconciliation', () => {
     assert.contains(r.body.featureRequest, 'Original PRD')
   })
 
-  test('-InjectPlan no longer writes hard-coded "Injected externally" dummy', async () => {
+  test('-InjectPlan lands in PLAN_REVIEW with PENDING status (no rubber-stamp)', async () => {
     // Reset the workspace so we can test the inject flow cleanly
     await runOrchestrator(workspace.dir, ['-Reset', '-SkipGit'])
-    // Write a plan fixture into the workspace, then -InjectPlan
     writeFile(workspace.dir, '_v6_inject.md', planStyleContent)
     const planPath = join(workspace.dir, '_v6_inject.md')
-    // Dashboard isn't running in this test workspace, so the legacy fallback path runs.
-    // The legacy fallback no longer says "Injected externally" in PHASE_PLAN.md (we
-    // kept the marker only in the optional fallback). Either path is acceptable as
-    // long as no orphan "## Phase 1: Injected" with "Goal: Injected externally." appears
-    // when the dashboard IS running. Here we just sanity-check the command doesn't crash.
+    // V6.1: -InjectPlan now lands in PLAN_REVIEW (not EXECUTION). The reconciler
+    // emits STATUS: PENDING so the Director must actually review the plan
+    // before -Next can advance to EXECUTION.
     const r = await runOrchestrator(workspace.dir, ['-InjectPlan', planPath, '-SkipGit'])
     assert.equal(r.code, 0, `inject failed: ${r.stdout}\n${r.stderr}`)
     const status = readStatus(workspace.dir)
-    assert.equal(status.currentState, 'EXECUTION')
+    assert.equal(status.currentState, 'PLAN_REVIEW')
+    const planReview = readFileSync(join(workspace.dir, 'WORKFLOW/ACTIVE/PLAN_REVIEW.md'), 'utf-8')
+    assert.match(planReview, /STATUS:\s*PENDING/)
+    // PLAN_APPROVED.md must NOT exist yet — only the Director writes it on real APPROVED
+    assert.equal(existsSync(join(workspace.dir, 'WORKFLOW/ACTIVE/PLAN_APPROVED.md')), false,
+      'PLAN_APPROVED.md should NOT exist before Director reviews — that was the rubber-stamp bug')
+  })
+})
+
+// =============================================================================
+// 12b. V6.1 reliability fixes (tickle file, Gate 4 alternation, testingMode)
+// =============================================================================
+suite('12b. V6.1 reliability fixes', () => {
+  test('Tickle: CURRENT_INSTRUCTION.md is written on every transition', async () => {
+    await runOrchestrator(workspace.dir, ['-Reset', '-SkipGit'])
+    await runOrchestrator(workspace.dir, ['-Next', '-SkipGit']) // INIT -> PHASE_PLANNING
+    const tickle = join(workspace.dir, 'WORKFLOW/ACTIVE/CURRENT_INSTRUCTION.md')
+    assert.ok(existsSync(tickle), 'CURRENT_INSTRUCTION.md should exist after first transition')
+    const content = readFileSync(tickle, 'utf-8')
+    assert.contains(content, 'PHASE_PLANNING')
+    assert.contains(content, 'DIRECTOR')
+  })
+
+  test('Gate 4: "## Files Created" alternation accepted (new-files-only work)', async () => {
+    // Walk fresh from INIT to EXECUTION, then submit a Created-only report
+    await runOrchestrator(workspace.dir, ['-Reset', '-SkipGit'])
+    await runOrchestrator(workspace.dir, ['-Next', '-SkipGit'])
+    writeFile(workspace.dir, 'WORKFLOW/ACTIVE/PHASE_PLAN.md', '# Phase Plan\n\n## Phase 1: x\nGoal: y.')
+    await runOrchestrator(workspace.dir, ['-Next', '-SkipGit'])
+    writeFile(workspace.dir, 'WORKFLOW/ACTIVE/DETAILED_PLAN.md',
+      '# Detailed\n## Files to Modify\n| File | Action |\n|---|---|\n| x.md | CREATE |\n## Implementation Steps\n1. Do.')
+    await runOrchestrator(workspace.dir, ['-Next', '-SkipGit'])
+    writeFile(workspace.dir, 'WORKFLOW/ACTIVE/PLAN_REVIEW.md', '# Review\nSTATUS: APPROVED')
+    writeFile(workspace.dir, 'WORKFLOW/ACTIVE/PLAN_APPROVED.md',
+      '# Approved\n## Files to Modify\n| File | Action |\n|---|---|\n| x.md | CREATE |\n## Implementation Steps\n1. Do.')
+    await runOrchestrator(workspace.dir, ['-Next', '-SkipGit'])
+    // Use "## Files Created" instead of "## Files Modified"
+    writeFile(workspace.dir, 'WORKFLOW/ACTIVE/EXECUTION_REPORT.md',
+      '# Report\n\n## Files Created\n- x.md\n\n## Tests Run\nAll green.')
+    const r = await runOrchestrator(workspace.dir, ['-Next', '-SkipGit'])
+    assert.equal(r.code, 0, `Gate 4 should accept "## Files Created" alternation: ${r.stdout}\n${r.stderr}`)
+  })
+
+  test('Gate 4: testingMode=none accepts skip marker instead of Tests Run', async () => {
+    await runOrchestrator(workspace.dir, ['-Reset', '-SkipGit'])
+    // Set testingMode=none in workflow-config.json (handle BOM if present)
+    const cfgPath = join(workspace.dir, 'WORKFLOW/workflow-config.json')
+    let cfgRaw = readFileSync(cfgPath, 'utf-8')
+    if (cfgRaw.charCodeAt(0) === 0xFEFF) cfgRaw = cfgRaw.slice(1)
+    const cfg = JSON.parse(cfgRaw)
+    cfg.testingMode = 'none'
+    writeFile(workspace.dir, 'WORKFLOW/workflow-config.json', JSON.stringify(cfg, null, 2))
+    // Walk to EXECUTION
+    await runOrchestrator(workspace.dir, ['-Next', '-SkipGit'])
+    writeFile(workspace.dir, 'WORKFLOW/ACTIVE/PHASE_PLAN.md', '# Phase Plan\n\n## Phase 1: x\nGoal: y.')
+    await runOrchestrator(workspace.dir, ['-Next', '-SkipGit'])
+    writeFile(workspace.dir, 'WORKFLOW/ACTIVE/DETAILED_PLAN.md',
+      '# Detailed\n## Files to Modify\n| File | Action |\n|---|---|\n| x.md | CREATE |\n## Implementation Steps\n1. Do.')
+    await runOrchestrator(workspace.dir, ['-Next', '-SkipGit'])
+    writeFile(workspace.dir, 'WORKFLOW/ACTIVE/PLAN_REVIEW.md', '# Review\nSTATUS: APPROVED')
+    writeFile(workspace.dir, 'WORKFLOW/ACTIVE/PLAN_APPROVED.md',
+      '# Approved\n## Files to Modify\n| File | Action |\n|---|---|\n| x.md | CREATE |\n## Implementation Steps\n1. Do.')
+    await runOrchestrator(workspace.dir, ['-Next', '-SkipGit'])
+    // No "## Tests Run" header — only the skip marker
+    writeFile(workspace.dir, 'WORKFLOW/ACTIVE/EXECUTION_REPORT.md',
+      '# Report\n\n## Files Modified\n- x.md\n\n_Skipped: testingMode=none_\n')
+    const r = await runOrchestrator(workspace.dir, ['-Next', '-SkipGit'])
+    assert.equal(r.code, 0, `Gate 4 with testingMode=none + skip marker should pass: ${r.stdout}\n${r.stderr}`)
+  })
+
+  test('Multi-phase: reconciler emits PHASE_QUEUE for PRD with N>1 phases', async () => {
+    const md = '# Multi\n\n## Phase 1: First\nA\n\n## Phase 2: Second\nB\n\n## Phase 3: Third\nC\n'
+    const r = await http(`${dashboard.base}/api/ingest/prd`, { method: 'POST', body: { markdown: md, mode: 'reconcile' } })
+    assert.status(r, 200)
+    assert.ok(r.body.reconciled.phaseQueue, 'phaseQueue should be present for multi-phase input')
+    assert.equal(r.body.reconciled.phaseQueue.cycles.length, 3)
+    assert.equal(r.body.reconciled.phaseQueue.cursor, 0)
   })
 })
 

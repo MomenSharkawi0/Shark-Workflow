@@ -221,13 +221,37 @@ function extractFields(md) {
   };
 }
 
+/**
+ * Extract top-level phases from a PRD/plan markdown. Matches H2 headings of the
+ * form `## Phase 1: Title`, `## Phase 2 — Title`, or `## Phase 3` (digit
+ * required, top-level only — H3+ and code-fence content are ignored by
+ * sliceSections). Returns [] when fewer than 2 phases are found, so callers can
+ * keep their single-phase fallback path. Each phase carries its full body
+ * verbatim so downstream cycles can preserve the user's original wording.
+ */
+function extractPhases(md) {
+  const sections = sliceSections(md);
+  const phases = [];
+  for (const sec of sections) {
+    if (sec.level !== 2) continue;
+    const m = sec.heading.match(/^Phase\s+(\d+)\s*[:\-—–]?\s*(.*)$/i);
+    if (!m) continue;
+    const number = parseInt(m[1], 10);
+    const title = (m[2] || '').trim() || `Phase ${number}`;
+    phases.push({ number, title, body: sec.body || '' });
+  }
+  if (phases.length < 2) return [];
+  return phases.sort((a, b) => a.number - b.number);
+}
+
 function interpret(md) {
   const classification = classifyMarkdown(md);
   const fields = extractFields(md);
+  const phases = extractPhases(md);
   const fieldConfs = [fields.projectName.confidence, fields.summary.confidence, fields.successCriteria.confidence];
   const avgFieldConf = fieldConfs.reduce((a, b) => a + b, 0) / fieldConfs.length;
   const aggregate = Math.min(1, classification.confidence * 0.5 + avgFieldConf * 0.5);
-  return { classification, fields, confidence: aggregate };
+  return { classification, fields, phases, confidence: aggregate };
 }
 
-module.exports = { classifyMarkdown, extractFields, interpret };
+module.exports = { classifyMarkdown, extractFields, extractPhases, interpret };

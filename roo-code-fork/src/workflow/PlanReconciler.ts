@@ -17,13 +17,20 @@
  * route and the orchestrator's `-InjectPlan` rewrite.
  */
 
-import type { InterpretedPrd } from "./PrdInterpreter"
+import type { InterpretedPrd, ExtractedPhase } from "./PrdInterpreter"
+
+export interface PhaseQueue {
+	cycles: { number: number; title: string; body: string }[]
+	cursor: number
+	projectName: string
+}
 
 export interface ReconciledPlan {
 	phasePlan: string
 	detailedPlan: string
 	planReview: string
 	warnings: string[]
+	phaseQueue: PhaseQueue | null
 }
 
 /**
@@ -33,38 +40,58 @@ export interface ReconciledPlan {
  *   Gate 1: /## Phase \d/                                            (PHASE_PLAN.md)
  *   Gate 2: /## (Files to Modify|Implementation Steps)/             (DETAILED_PLAN.md) — we satisfy BOTH for safety
  *   Gate 3: /STATUS:\s*(APPROVED|NEEDS_REVISION)/                   (PLAN_REVIEW.md)
+ *
+ * Multi-phase: when `interpreted.phases.length > 1`, return a `phaseQueue`
+ * so the orchestrator can run one cycle per phase (cursor advances on COMPLETE).
  */
-export function reconcileToPlan(source: string, interpreted: InterpretedPrd): ReconciledPlan {
+export function reconcileToPlan(
+	source: string,
+	interpreted: InterpretedPrd & { phases?: ExtractedPhase[] }
+): ReconciledPlan {
 	const warnings: string[] = []
 	const summary = interpreted.summary.value || "(no summary detected — see Original Plan below)"
 	const projectName = interpreted.projectName.value || "Untitled Project"
+	const phases: ExtractedPhase[] = Array.isArray(interpreted.phases) ? interpreted.phases : []
 
 	if (!interpreted.summary.value) warnings.push("Summary could not be extracted — using fallback")
 	if (interpreted.successCriteria.confidence < 0.4) warnings.push("Success criteria confidence is low; review before approving")
+	if (phases.length > 1) warnings.push(`Detected ${phases.length} phases — they will run as sequential cycles via WORKFLOW/PHASE_QUEUE.json`)
 
 	// --- PHASE_PLAN.md ----------------------------------------------------
-	// Gate 1 requires `## Phase N` somewhere. We write a single high-level
-	// phase that wraps the entire scope (matches what -Plan wizard does).
+	// Gate 1 requires `## Phase N` somewhere.
+	const phaseSections = phases.length > 1
+		? phases.map((p, idx) => [
+			`## Phase ${p.number}: ${p.title}`,
+			idx === 0 ? "" : "_Queued — runs as a separate cycle once the previous phase reaches COMPLETE._",
+			p.body || "_(see Original Plan)_",
+			"",
+		].filter(Boolean).join("\n")).join("\n---\n\n")
+		: [
+			"## Phase 1: Implementation",
+			`**Goal:** Deliver "${summary.replace(/\s+/g, " ").slice(0, 200)}"`,
+			"**Scope:** Single deliverable derived from the reconciled plan below.",
+			"**Dependencies:** As listed in the Original Plan.",
+			"**Success Criteria:**",
+			formatSuccessCriteria(interpreted.successCriteria.value, projectName),
+		].join("\n")
+
 	const phasePlan = [
 		`# Phase Plan — ${projectName}`,
 		"",
 		"## Feature",
 		summary,
 		"",
+		phases.length > 1 ? `_Multi-phase project: ${phases.length} phases will run as sequential cycles._` : "",
+		"",
 		"---",
 		"",
-		"## Phase 1: Implementation",
-		`**Goal:** Deliver "${summary.replace(/\s+/g, " ").slice(0, 200)}"`,
-		"**Scope:** Single deliverable derived from the reconciled plan below.",
-		"**Dependencies:** As listed in the Original Plan.",
-		"**Success Criteria:**",
-		formatSuccessCriteria(interpreted.successCriteria.value, projectName),
+		phaseSections,
 		"",
 		"---",
 		"",
 		"_Reconciled from external markdown by `PlanReconciler.reconcileToPlan`. The original document is preserved verbatim in `DETAILED_PLAN.md` under `## Original Plan`._",
 		"",
-	].join("\n")
+	].filter((line) => line !== undefined).join("\n")
 
 	// --- DETAILED_PLAN.md -------------------------------------------------
 	// Gate 2 needs at least one of `## Files to Modify` / `## Implementation Steps`.
@@ -102,13 +129,15 @@ export function reconcileToPlan(source: string, interpreted: InterpretedPrd): Re
 	].join("\n")
 
 	// --- PLAN_REVIEW.md ---------------------------------------------------
-	// Gate 3 needs `STATUS: APPROVED` or `STATUS: NEEDS_REVISION`.
-	// Reconciliation always produces APPROVED — the user explicitly chose to
-	// inject this plan, so we trust the source.
+	// STATUS: PENDING is intentional. Reconciliation is best-effort, so the
+	// Director must actually read DETAILED_PLAN.md (which embeds the Original
+	// Plan) and replace this line with APPROVED or NEEDS_REVISION. Gate 3 only
+	// accepts APPROVED|NEEDS_REVISION so -Next will block here until a real
+	// review happens — no more rubber-stamping.
 	const planReview = [
 		`# Plan Review — ${projectName}`,
 		"",
-		"STATUS: APPROVED",
+		"STATUS: PENDING — Director must review DETAILED_PLAN.md and replace this line with APPROVED or NEEDS_REVISION.",
 		"",
 		"## Reviewer Notes",
 		`Plan was reconciled from external markdown by \`PlanReconciler\`. The Director must respect the **Original Plan** section verbatim and use the synthesised headings (Files to Modify, Implementation Steps) as a structured map, not a replacement.`,
@@ -120,7 +149,15 @@ export function reconcileToPlan(source: string, interpreted: InterpretedPrd): Re
 		"",
 	].join("\n")
 
-	return { phasePlan, detailedPlan, planReview, warnings }
+	const phaseQueue: PhaseQueue | null = phases.length > 1
+		? {
+			cycles: phases.map((p) => ({ number: p.number, title: p.title, body: p.body })),
+			cursor: 0,
+			projectName,
+		}
+		: null
+
+	return { phasePlan, detailedPlan, planReview, warnings, phaseQueue }
 }
 
 /**

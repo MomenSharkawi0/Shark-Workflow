@@ -13,9 +13,30 @@ function reconcileToPlan(source, interpreted) {
   const warnings = [];
   const summary = (interpreted.summary && interpreted.summary.value) || '(no summary detected — see Original Plan below)';
   const projectName = (interpreted.projectName && interpreted.projectName.value) || 'Untitled Project';
+  const phases = Array.isArray(interpreted.phases) ? interpreted.phases : [];
 
   if (!interpreted.summary || !interpreted.summary.value) warnings.push('Summary could not be extracted — using fallback');
   if (interpreted.successCriteria && interpreted.successCriteria.confidence < 0.4) warnings.push('Success criteria confidence is low; review before approving');
+  if (phases.length > 1) warnings.push(`Detected ${phases.length} phases — they will run as sequential cycles via WORKFLOW/PHASE_QUEUE.json`);
+
+  // Multi-phase: PHASE_PLAN summarises every phase, but only Phase 1's body becomes
+  // the active cycle. Subsequent phases live in `phaseQueue` and the orchestrator
+  // pops them on COMPLETE.
+  const phaseSections = phases.length > 1
+    ? phases.map((p, idx) => [
+        `## Phase ${p.number}: ${p.title}`,
+        idx === 0 ? '' : '_Queued — runs as a separate cycle once the previous phase reaches COMPLETE._',
+        p.body || '_(see Original Plan)_',
+        '',
+      ].filter(Boolean).join('\n')).join('\n---\n\n')
+    : [
+        '## Phase 1: Implementation',
+        `**Goal:** Deliver "${summary.replace(/\s+/g, ' ').slice(0, 200)}"`,
+        '**Scope:** Single deliverable derived from the reconciled plan below.',
+        '**Dependencies:** As listed in the Original Plan.',
+        '**Success Criteria:**',
+        formatSuccessCriteria((interpreted.successCriteria && interpreted.successCriteria.value) || '', projectName),
+      ].join('\n');
 
   const phasePlan = [
     `# Phase Plan — ${projectName}`,
@@ -23,20 +44,17 @@ function reconcileToPlan(source, interpreted) {
     '## Feature',
     summary,
     '',
+    phases.length > 1 ? `_Multi-phase project: ${phases.length} phases will run as sequential cycles._` : '',
+    '',
     '---',
     '',
-    '## Phase 1: Implementation',
-    `**Goal:** Deliver "${summary.replace(/\s+/g, ' ').slice(0, 200)}"`,
-    '**Scope:** Single deliverable derived from the reconciled plan below.',
-    '**Dependencies:** As listed in the Original Plan.',
-    '**Success Criteria:**',
-    formatSuccessCriteria((interpreted.successCriteria && interpreted.successCriteria.value) || '', projectName),
+    phaseSections,
     '',
     '---',
     '',
     '_Reconciled from external markdown by `PlanReconciler.reconcileToPlan`. The original document is preserved verbatim in `DETAILED_PLAN.md` under `## Original Plan`._',
     '',
-  ].join('\n');
+  ].filter((line) => line !== undefined).join('\n');
 
   const detailedPlan = [
     `# Detailed Plan — ${projectName}`,
@@ -69,10 +87,15 @@ function reconcileToPlan(source, interpreted) {
     '',
   ].join('\n');
 
+  // STATUS: PENDING is intentional — reconciler is best-effort. The Director
+  // must read DETAILED_PLAN.md (which embeds the Original Plan verbatim) and
+  // replace this STATUS line with APPROVED or NEEDS_REVISION before -Next can
+  // advance past PLAN_REVIEW. Gate 3 only accepts APPROVED|NEEDS_REVISION, so
+  // the workflow blocks here until a real human-or-Director call happens.
   const planReview = [
     `# Plan Review — ${projectName}`,
     '',
-    'STATUS: APPROVED',
+    'STATUS: PENDING — Director must review DETAILED_PLAN.md and replace this line with APPROVED or NEEDS_REVISION.',
     '',
     '## Reviewer Notes',
     'Plan was reconciled from external markdown by `PlanReconciler`. The Director must respect the **Original Plan** section verbatim and use the synthesised headings (Files to Modify, Implementation Steps) as a structured map, not a replacement.',
@@ -82,7 +105,18 @@ function reconcileToPlan(source, interpreted) {
     '',
   ].join('\n');
 
-  return { phasePlan, detailedPlan, planReview, warnings };
+  // When multi-phase, emit a queue. Cursor=0 → currently working on phases[0];
+  // when orchestrator reaches COMPLETE it bumps the cursor and re-enters
+  // PHASE_PLANNING with the next phase pre-loaded.
+  const phaseQueue = phases.length > 1
+    ? {
+        cycles: phases.map((p) => ({ number: p.number, title: p.title, body: p.body })),
+        cursor: 0,
+        projectName,
+      }
+    : null;
+
+  return { phasePlan, detailedPlan, planReview, warnings, phaseQueue };
 }
 
 function reconcileToFeatureRequest(interpreted, sourceMd) {
