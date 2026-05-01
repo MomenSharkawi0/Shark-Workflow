@@ -98,7 +98,7 @@ The orchestrator script validates these gates programmatically before allowing t
 
 ## Quality Gate 1 - Phase Plan Gate
 
-**Trigger:** Before transitioning from PHASE_PLANNING â†’ DETAILED_PLANNING
+**Trigger:** Before transitioning from PHASE_PLANNING â†' DETAILED_PLANNING
 **File:** ``WORKFLOW/ACTIVE/PHASE_PLAN.md``
 **Automated Check:** Must contain at least one ``## Phase N`` section header.
 
@@ -113,7 +113,7 @@ The orchestrator script validates these gates programmatically before allowing t
 
 ## Quality Gate 2 - Detailed Plan Gate
 
-**Trigger:** Before transitioning from DETAILED_PLANNING â†’ PLAN_REVIEW
+**Trigger:** Before transitioning from DETAILED_PLANNING â†' PLAN_REVIEW
 **File:** ``WORKFLOW/ACTIVE/DETAILED_PLAN.md``
 **Automated Check:** Must contain ``## Files to Modify`` or ``## Implementation Steps`` sections.
 
@@ -127,7 +127,7 @@ The orchestrator script validates these gates programmatically before allowing t
 
 ## Quality Gate 3 - Plan Approval Gate
 
-**Trigger:** Before transitioning from PLAN_REVIEW â†’ EXECUTION
+**Trigger:** Before transitioning from PLAN_REVIEW â†' EXECUTION
 **File:** ``WORKFLOW/ACTIVE/PLAN_REVIEW.md``
 **Automated Check:** Must contain ``STATUS: APPROVED`` or ``STATUS: NEEDS_REVISION``.
 
@@ -139,7 +139,7 @@ The orchestrator script validates these gates programmatically before allowing t
 
 ## Quality Gate 4 - Execution Gate
 
-**Trigger:** Before transitioning from EXECUTION â†’ EXECUTION_REVIEW
+**Trigger:** Before transitioning from EXECUTION â†' EXECUTION_REVIEW
 **File:** ``WORKFLOW/ACTIVE/EXECUTION_REPORT.md``
 **Automated Check:** Must contain ``## Files Modified`` and ``## Tests Run`` sections.
 
@@ -152,7 +152,7 @@ The orchestrator script validates these gates programmatically before allowing t
 
 ## Quality Gate 5 - Execution Approval Gate
 
-**Trigger:** Before transitioning from EXECUTION_REVIEW â†’ ARCHIVE
+**Trigger:** Before transitioning from EXECUTION_REVIEW â†' ARCHIVE
 **File:** ``WORKFLOW/ACTIVE/EXECUTION_REVIEW.md``
 **Automated Check:** Must contain ``STATUS: APPROVED`` or ``STATUS: NEEDS_REVISION``.
 
@@ -291,9 +291,15 @@ Each mode must run its self-review checklist before marking work complete.
 - [ ] Each phase has: Goal, Scope, Dependencies, Success Criteria
 
 ### Plan Review (before writing PLAN_REVIEW.md)
-- [ ] DETAILED_PLAN.md is comprehensive
-- [ ] Risk assessments are realistic
-- [ ] Test plan is actionable
+- [ ] Files-to-Modify table has at least one concrete row (no `_to be enumerated_` placeholders)
+- [ ] Every file referenced in Implementation Steps either exists in the repo or is explicitly marked as new
+- [ ] Risk Assessment section is non-empty and specific (not just "LOW")
+- [ ] Rollback Plan exists for any stateful changes (DB, schema, deletions)
+- [ ] Test Strategy matches workflow-config.json testingMode (tdd -> tests listed first; post-hoc -> command named; none -> skip)
+- [ ] Plan does not contradict PHASE_DNA.md without explanation
+- [ ] Plan scope matches PHASE_PLAN.md (no scope creep)
+- [ ] If reconciler emitted STATUS: PENDING, I have personally reviewed DETAILED_PLAN.md (including the embedded Original Plan)
+- [ ] On APPROVED, I have copied DETAILED_PLAN.md -> PLAN_APPROVED.md
 
 ### Execution Review (before writing EXECUTION_REVIEW.md)
 - [ ] EXECUTION_REPORT.md is complete
@@ -443,7 +449,7 @@ STRICT RULES:
 - NEVER modify files not listed in the plan
 - NEVER "improve" something that was not asked
 - NEVER skip running tests
-- If you find a bug outside scope â†’ report it, do NOT fix it
+- If you find a bug outside scope â†' report it, do NOT fix it
 - ALWAYS read WORKFLOW/LESSONS_LEARNED.md before starting (Filter by relevant Technology Tags)
 - ALWAYS check WORKFLOW/ORCHESTRATION_STATUS.json (READ-ONLY - do NOT edit it)
 
@@ -650,7 +656,7 @@ Write-FileIfNew ".roomodes" @'
     {
       "slug": "prd-interpreter",
       "name": "PRD Interpreter",
-      "roleDefinition": "You are the PRD INTERPRETER. Your single job: read the markdown handed to you and return a strict JSON object describing what was found.\n\nNever modify the input. Never invent fields not in the source. When unsure, return empty strings and confidence: 0 — the dashboard's heuristic parser already provides a baseline.\n\nReturn ONLY valid JSON in this exact shape:\n{\n  \"kind\": \"prd\" | \"plan\" | \"hybrid\" | \"unknown\",\n  \"confidence\": 0..1,\n  \"fields\": {\n    \"projectName\":     { \"value\": \"...\", \"confidence\": 0..1 },\n    \"projectType\":     { \"value\": \"web|mobile|api|monorepo|cli|library|desktop|static\", \"confidence\": 0..1 },\n    \"summary\":         { \"value\": \"...\", \"confidence\": 0..1 },\n    \"dataModel\":       { \"value\": \"...\", \"confidence\": 0..1 },\n    \"constraints\":     { \"value\": \"...\", \"confidence\": 0..1 },\n    \"successCriteria\": { \"value\": \"...\", \"confidence\": 0..1 },\n    \"stackHints\":      { \"value\": [\"Laravel\", \"PostgreSQL\", \"...\"], \"confidence\": 0..1 }\n  }\n}\n\nNo markdown fences. No commentary. Just the JSON object.",
+      "roleDefinition": "You are the PRD INTERPRETER. Your single job: read the markdown handed to you and return a strict JSON object describing what was found.\n\nNever modify the input. Never invent fields not in the source. When unsure, return empty strings and confidence: 0 -- the dashboard's heuristic parser already provides a baseline.\n\nReturn ONLY valid JSON in this exact shape:\n{\n  \"kind\": \"prd\" | \"plan\" | \"hybrid\" | \"unknown\",\n  \"confidence\": 0..1,\n  \"fields\": {\n    \"projectName\":     { \"value\": \"...\", \"confidence\": 0..1 },\n    \"projectType\":     { \"value\": \"web|mobile|api|monorepo|cli|library|desktop|static\", \"confidence\": 0..1 },\n    \"summary\":         { \"value\": \"...\", \"confidence\": 0..1 },\n    \"dataModel\":       { \"value\": \"...\", \"confidence\": 0..1 },\n    \"constraints\":     { \"value\": \"...\", \"confidence\": 0..1 },\n    \"successCriteria\": { \"value\": \"...\", \"confidence\": 0..1 },\n    \"stackHints\":      { \"value\": [\"Laravel\", \"PostgreSQL\", \"...\"], \"confidence\": 0..1 }\n  }\n}\n\nNo markdown fences. No commentary. Just the JSON object.",
       "groups": ["read"]
     }
   ]
@@ -699,7 +705,9 @@ Write-FileIfNew "WORKFLOW/workflow-config.json" @'
   "pollingRateMs": 1000,
   "autopilotSettings": {
     "allowFullAutonomy": false
-  }
+  },
+  "testingMode": "post-hoc",
+  "strictReview": false
 }
 '@
 
@@ -1514,7 +1522,7 @@ if (-not $SkipDashboard) {
     }
 
     if ($liveSourceExists -and $sameLocation) {
-        # Case 2: already in place — leave the live files alone.
+        # Case 2: already in place -- leave the live files alone.
         Write-Host "  Live dashboard already in place at workflow-dashboard/ (no copy needed)." -ForegroundColor Green
     }
     elseif ($liveSourceExists) {
@@ -1531,7 +1539,7 @@ if (-not $SkipDashboard) {
         Write-Host "  COPIED: workflow-dashboard/package.json" -ForegroundColor Green
     }
     else {
-        # Case 3: no live source anywhere — embedded fallback.
+        # Case 3: no live source anywhere -- embedded fallback.
         Write-Host "  No live dashboard source found; falling back to embedded copies." -ForegroundColor Yellow
         Set-Content -Path "workflow-dashboard/server.js" -Value $ServerJsContent -Encoding UTF8
         Write-Host "  CREATED: workflow-dashboard/server.js (embedded fallback)" -ForegroundColor Green

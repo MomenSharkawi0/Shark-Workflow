@@ -12,11 +12,49 @@ import * as path from "path"
  * VS Code command: roo-code.checkWorkflowGate
  */
 export class GateValidator {
+    /**
+     * Read testingMode from WORKFLOW/workflow-config.json. Falls back to
+     * "post-hoc" when missing/corrupt. Keep in sync with the PS-side
+     * Get-WorkflowConfig in orchestrator.ps1.
+     */
+    private getTestingMode(workspaceRoot: string): "tdd" | "post-hoc" | "none" {
+        try {
+            const p = path.join(workspaceRoot, "WORKFLOW", "workflow-config.json")
+            if (!fs.existsSync(p)) return "post-hoc"
+            const cfg = JSON.parse(fs.readFileSync(p, "utf8"))
+            const mode = cfg.testingMode
+            if (mode === "tdd" || mode === "post-hoc" || mode === "none") return mode
+        } catch { /* ignore — fall through to default */ }
+        return "post-hoc"
+    }
+
+    /**
+     * Gate 4 validation — execution report must have Files Modified/Created/Changed
+     * AND Tests Run (unless testingMode=none, in which case the skip marker is
+     * accepted). Mirror of Test-ExecutionReportGate in orchestrator.ps1.
+     */
+    private validateExecutionReport(content: string, testingMode: "tdd" | "post-hoc" | "none"): { passed: boolean; reason?: string } {
+        const missing: string[] = []
+        if (!/(?:^|\n)##\s+Files (Modified|Created|Changed)\b/.test(content)) {
+            missing.push("Files Modified|Created|Changed")
+        }
+        const hasTestsHeader = /(?:^|\n)##\s+Tests Run\b/.test(content)
+        const hasSkipMarker = /_Skipped:\s*testingMode=none_/.test(content)
+        if (testingMode === "none") {
+            if (!hasTestsHeader && !hasSkipMarker) missing.push("Tests Run (or _Skipped: testingMode=none_ marker)")
+        } else if (!hasTestsHeader) {
+            missing.push("Tests Run")
+        }
+        return missing.length === 0
+            ? { passed: true }
+            : { passed: false, reason: `Missing required sections: ${missing.join(", ")}` }
+    }
+
     private readonly GATE_RULES: Record<string, {
         gateNumber: number
         gateName: string
         expectedFile: string
-        validate: (content: string) => { passed: boolean; reason?: string }
+        validate: (content: string, workspaceRoot?: string, self?: GateValidator) => { passed: boolean; reason?: string }
     }> = {
         "PHASE_PLANNING": {
             gateNumber: 1,
@@ -58,12 +96,9 @@ export class GateValidator {
             gateNumber: 4,
             gateName: "Execution Report Valid",
             expectedFile: "EXECUTION_REPORT.md",
-            validate: (content: string) => {
-                const hasSections = /## (Files Modified|Tests Run)/.test(content)
-                return {
-                    passed: hasSections,
-                    reason: hasSections ? undefined : 'Must contain "## Files Modified" and "## Tests Run" sections'
-                }
+            validate: (content: string, workspaceRoot?: string, self?: GateValidator) => {
+                const mode = self && workspaceRoot ? self.getTestingMode(workspaceRoot) : "post-hoc"
+                return self ? self.validateExecutionReport(content, mode) : { passed: true }
             }
         },
         "EXECUTION_REVIEW": {
@@ -82,24 +117,18 @@ export class GateValidator {
             gateNumber: 4,
             gateName: "Backend Execution Report Valid",
             expectedFile: "EXECUTION_REPORT_BACKEND.md",
-            validate: (content: string) => {
-                const hasSections = /## (Files Modified|Tests Run)/.test(content)
-                return {
-                    passed: hasSections,
-                    reason: hasSections ? undefined : 'Must contain "## Files Modified" and "## Tests Run" sections'
-                }
+            validate: (content: string, workspaceRoot?: string, self?: GateValidator) => {
+                const mode = self && workspaceRoot ? self.getTestingMode(workspaceRoot) : "post-hoc"
+                return self ? self.validateExecutionReport(content, mode) : { passed: true }
             }
         },
         "EXECUTION_FRONTEND": {
             gateNumber: 4,
             gateName: "Frontend Execution Report Valid",
             expectedFile: "EXECUTION_REPORT_FRONTEND.md",
-            validate: (content: string) => {
-                const hasSections = /## (Files Modified|Tests Run)/.test(content)
-                return {
-                    passed: hasSections,
-                    reason: hasSections ? undefined : 'Must contain "## Files Modified" and "## Tests Run" sections'
-                }
+            validate: (content: string, workspaceRoot?: string, self?: GateValidator) => {
+                const mode = self && workspaceRoot ? self.getTestingMode(workspaceRoot) : "post-hoc"
+                return self ? self.validateExecutionReport(content, mode) : { passed: true }
             }
         }
     }
@@ -142,7 +171,7 @@ export class GateValidator {
         }
 
         const content = fs.readFileSync(expectedFilePath, "utf8")
-        const result = rule.validate(content)
+        const result = rule.validate(content, workspaceRoot, this)
 
         return {
             state: currentState,

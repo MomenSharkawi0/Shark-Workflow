@@ -83,6 +83,9 @@ const DEFAULT_CONFIG: WorkflowConfig = {
     contextFiles: {
         "director": [
             "WORKFLOW/ORCHESTRATION_STATUS.json",
+            "WORKFLOW/ACTIVE/CURRENT_INSTRUCTION.md",
+            "WORKFLOW/ACTIVE/PHASE_PLAN.md",
+            "WORKFLOW/ACTIVE/DETAILED_PLAN.md",
             "WORKFLOW/LESSONS_LEARNED.md",
             "WORKFLOW/PHASE_DNA.md",
             "WORKFLOW/GOLDEN_RULES.md",
@@ -90,6 +93,7 @@ const DEFAULT_CONFIG: WorkflowConfig = {
         ],
         "planner": [
             "WORKFLOW/ORCHESTRATION_STATUS.json",
+            "WORKFLOW/ACTIVE/CURRENT_INSTRUCTION.md",
             "WORKFLOW/ACTIVE/PHASE_PLAN.md",
             "WORKFLOW/LESSONS_LEARNED.md",
             "WORKFLOW/PHASE_DNA.md",
@@ -98,11 +102,15 @@ const DEFAULT_CONFIG: WorkflowConfig = {
         ],
         "executor": [
             "WORKFLOW/ORCHESTRATION_STATUS.json",
+            "WORKFLOW/ACTIVE/CURRENT_INSTRUCTION.md",
             "WORKFLOW/ACTIVE/PLAN_APPROVED.md",
             "WORKFLOW/LESSONS_LEARNED.md",
         ],
         "workflow-master": [
             "WORKFLOW/ORCHESTRATION_STATUS.json",
+            "WORKFLOW/ACTIVE/CURRENT_INSTRUCTION.md",
+            "WORKFLOW/ACTIVE/PHASE_PLAN.md",
+            "WORKFLOW/ACTIVE/DETAILED_PLAN.md",
             "WORKFLOW/LESSONS_LEARNED.md",
             "WORKFLOW/PHASE_DNA.md",
             "WORKFLOW/GOLDEN_RULES.md",
@@ -184,6 +192,28 @@ export function activateWorkflowIntegration(
     _activeConfig = loadConfig(workspaceRoot)
     console.log(`[Workflow] Config loaded — debounce: ${_activeConfig.debounceMs}ms, polling: ${_activeConfig.pollingIntervalMs}ms, gate: ${_activeConfig.gateStrictness}`)
 
+    // Helper: post a "resume" trigger to the active Roo task. Reuses the same
+    // postMessageToWebview / createTask plumbing WorkflowBridge.ts already uses
+    // for chat-driven cycle starts. Idempotent — safe to call repeatedly.
+    const RESUME_PROMPT =
+        "The workflow just transitioned. Read `WORKFLOW/ACTIVE/CURRENT_INSTRUCTION.md` and proceed with the action it describes for your active mode."
+    const fireResumeTrigger = async () => {
+        try {
+            const currentTask = provider.getCurrentTask ? provider.getCurrentTask() : null
+            if (currentTask && provider.postMessageToWebview) {
+                await provider.postMessageToWebview({ type: "invoke", invoke: "sendMessage", text: RESUME_PROMPT })
+                return true
+            }
+            if (provider.createTask) {
+                await provider.createTask(RESUME_PROMPT)
+                return true
+            }
+        } catch (err) {
+            console.warn("[Workflow] fireResumeTrigger failed:", err)
+        }
+        return false
+    }
+
     // 1. Auto Mode-Switch Watcher
     const watcher = new WorkflowWatcher()
     watcher.activate(workspaceRoot, (slug) => {
@@ -203,6 +233,13 @@ export function activateWorkflowIntegration(
                 provider.setSystemPrompt(currentPrompt + contextBlock)
             }
         }
+
+        // Fix 1 (autopilot stall): after every state-driven mode swap, push a
+        // follow-up message so the agent actually starts the next role's work.
+        // Without this, mid-cycle handoffs (e.g. PLANNER → DIRECTOR for
+        // PLAN_REVIEW) leave the agent thread idle waiting for input that the
+        // previous turn ended. We debounce 250ms so the mode swap settles.
+        setTimeout(() => { void fireResumeTrigger() }, 250)
     }, _activeConfig.debounceMs)
     context.subscriptions.push({ dispose: () => watcher.dispose() })
 
@@ -256,6 +293,19 @@ export function activateWorkflowIntegration(
         vscode.commands.registerCommand("roo-code.reloadWorkflowConfig", () => {
             _activeConfig = loadConfig(workspaceRoot)
             vscode.window.showInformationMessage("🔄 Workflow config reloaded from workflow-config.json")
+        })
+    )
+
+    // 7. Resume Workflow Command — manual fallback if the auto-trigger fails
+    //    or if the user closed/reopened the workspace mid-cycle.
+    context.subscriptions.push(
+        vscode.commands.registerCommand("roo-code.resumeWorkflow", async () => {
+            const ok = await fireResumeTrigger()
+            if (ok) {
+                vscode.window.showInformationMessage("▶ Workflow resume trigger sent — agent will read CURRENT_INSTRUCTION.md.")
+            } else {
+                vscode.window.showWarningMessage("Could not send resume trigger — open a Roo task first.")
+            }
         })
     )
 

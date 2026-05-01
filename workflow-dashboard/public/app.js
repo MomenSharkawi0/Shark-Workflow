@@ -110,7 +110,12 @@ function handleStatusUpdate(data) {
 
   buildStepper(state);
 
-  document.getElementById('metricState').textContent = state.replace(/_/g, ' ');
+  // Append "Phase N of M" badge when running through a multi-phase queue.
+  const phaseIndex = Number(data.phaseIndex || 0);
+  const phaseTotal = Number(data.phaseTotal || 0);
+  const stateLabel = state.replace(/_/g, ' ');
+  const phaseSuffix = (phaseIndex > 0 && phaseTotal > 1) ? ` — Phase ${phaseIndex} of ${phaseTotal}` : '';
+  document.getElementById('metricState').textContent = stateLabel + phaseSuffix;
 
   const status = data.status || 'IN_PROGRESS';
   const badge = document.getElementById('statusBadge');
@@ -142,8 +147,65 @@ function handleStatusUpdate(data) {
     if (data.autopilot) { track.classList.add('on'); } else { track.classList.remove('on'); }
   }
 
+  // Editor mode badge (sidecar from VS Code) + deliverable checkmarks + CTA
+  renderEditorMode(data.editorMode);
+  renderDeliverableHints(state, data.deliverables || {});
+
   // Refresh progress estimation on state change
   loadProgress();
+}
+
+function renderEditorMode(mode) {
+  let badge = document.getElementById('editorModeBadge');
+  if (!badge) {
+    const stateEl = document.getElementById('metricState');
+    if (!stateEl) return;
+    badge = document.createElement('span');
+    badge.id = 'editorModeBadge';
+    badge.style.cssText = 'margin-left: 12px; padding: 2px 8px; border-radius: 4px; font-size: 11px; background: #2d4a3e; color: #4ec9b0;';
+    stateEl.parentNode && stateEl.parentNode.appendChild(badge);
+  }
+  if (mode) {
+    badge.textContent = `Editor: ${mode.toUpperCase()}`;
+    badge.style.display = 'inline-block';
+  } else {
+    badge.style.display = 'none';
+  }
+}
+
+function renderDeliverableHints(state, deliverables) {
+  // Map a state to the deliverable that satisfies its gate. When the file
+  // already exists for the current state, surface a "Click Next to advance"
+  // hint so users don't have to guess whether they can move forward.
+  const stateToDeliverable = {
+    PHASE_PLANNING:    'phasePlan',
+    DETAILED_PLANNING: 'detailedPlan',
+    PLAN_REVIEW:       'planReview',
+    EXECUTION:         'executionReport',
+    EXECUTION_BACKEND: 'executionReport',
+    EXECUTION_FRONTEND:'executionReport',
+    EXECUTION_REVIEW:  'executionReview',
+  };
+  const key = stateToDeliverable[state];
+  const cta = document.getElementById('deliverableCta');
+  if (!cta) {
+    const stepper = document.getElementById('stepper');
+    if (!stepper) return;
+    const div = document.createElement('div');
+    div.id = 'deliverableCta';
+    div.style.cssText = 'margin: 8px 0; padding: 8px 12px; border-radius: 4px; font-size: 12px; display: none;';
+    stepper.parentNode && stepper.parentNode.insertBefore(div, stepper.nextSibling);
+  }
+  const ctaEl = document.getElementById('deliverableCta');
+  if (key && deliverables[key]) {
+    ctaEl.textContent = `▶ ${key} ready — click "Next Phase" to validate the gate and advance.`;
+    ctaEl.style.background = '#1e3a2f';
+    ctaEl.style.color = '#4ec9b0';
+    ctaEl.style.border = '1px solid #2d6b4f';
+    ctaEl.style.display = 'block';
+  } else {
+    ctaEl.style.display = 'none';
+  }
 }
 
 // ============================================================================

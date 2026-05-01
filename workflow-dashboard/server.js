@@ -113,14 +113,52 @@ let lastLogSize = 0;
  * Watch ORCHESTRATION_STATUS.json for changes and push via SSE.
  * Uses content hashing to avoid duplicate broadcasts.
  */
+function readDeliverables() {
+  // Lightweight existence-check for the deliverable each step is supposed to
+  // produce. Used by the dashboard to render checkmarks and a "Click Next"
+  // CTA when the current step's deliverable already exists.
+  const files = {
+    phasePlan:        'PHASE_PLAN.md',
+    detailedPlan:     'DETAILED_PLAN.md',
+    planReview:       'PLAN_REVIEW.md',
+    planApproved:     'PLAN_APPROVED.md',
+    executionReport:  'EXECUTION_REPORT.md',
+    executionReview:  'EXECUTION_REVIEW.md',
+    currentInstruction: 'CURRENT_INSTRUCTION.md',
+  };
+  const out = {};
+  for (const [key, name] of Object.entries(files)) {
+    out[key] = fs.existsSync(path.join(ACTIVE_DIR, name));
+  }
+  return out;
+}
+
+function readCurrentMode() {
+  // Sidecar written by the VS Code extension's WorkflowWatcher every time the
+  // Roo mode changes. Kept separate from ORCHESTRATION_STATUS.json to avoid
+  // concurrent-write races with the orchestrator.
+  const sidecar = path.join(WORKFLOW_DIR, 'CURRENT_MODE.json');
+  if (!fs.existsSync(sidecar)) return null;
+  try {
+    const stat = fs.statSync(sidecar);
+    // Treat anything older than 30s as stale (extension probably crashed).
+    if (Date.now() - stat.mtimeMs > 30_000) return null;
+    const raw = fs.readFileSync(sidecar, 'utf-8');
+    const data = JSON.parse(raw);
+    return typeof data.mode === 'string' ? data.mode : null;
+  } catch { return null; }
+}
+
 function startFileWatcher() {
   setInterval(() => {
     try {
       if (!fs.existsSync(STATUS_FILE)) return;
       const raw = fs.readFileSync(STATUS_FILE, 'utf-8');
-      const hash = Buffer.from(raw).toString('base64').slice(0, 32);
-      if (hash !== lastStatusHash) {
-        lastStatusHash = hash;
+      const deliverables = readDeliverables();
+      const editorMode = readCurrentMode();
+      const fingerprint = Buffer.from(raw).toString('base64').slice(0, 32) + '|' + JSON.stringify(deliverables) + '|' + (editorMode || '');
+      if (fingerprint !== lastStatusHash) {
+        lastStatusHash = fingerprint;
         const cleaned = raw.charCodeAt(0) === 0xFEFF ? raw.slice(1) : raw;
         const data = JSON.parse(cleaned);
         broadcastSSE('status_change', {
@@ -135,7 +173,11 @@ function startFileWatcher() {
           nextMode: data.nextMode,
           status: data.status,
           blockedReason: data.blockedReason,
-          autopilot: data.autopilot
+          autopilot: data.autopilot,
+          phaseIndex: data.phaseIndex || 0,
+          phaseTotal: data.phaseTotal || 0,
+          deliverables,
+          editorMode,
         });
       }
     } catch {}
@@ -181,7 +223,7 @@ function readStatus() {
     currentState: 'INIT', previousState: '', phase: '', cycleStart: '', cycleId: '',
     lastTransition: '', transitionCount: 0, retryCount: 0, nextAction: '',
     nextMode: '', status: 'IN_PROGRESS', blockedReason: '', autopilot: false,
-    parallelTracks: false
+    parallelTracks: false, phaseIndex: 0, phaseTotal: 0
   };
   if (!fs.existsSync(STATUS_FILE)) return defaultStatus;
 
@@ -269,6 +311,10 @@ app.get('/api/status', (req, res) => {
       'Status': data.status || 'IN_PROGRESS',
       'Blocked Reason': data.blockedReason || '',
       'Autopilot': data.autopilot ? 'ON' : 'OFF',
+      'Phase Index': data.phaseIndex || 0,
+      'Phase Total': data.phaseTotal || 0,
+      deliverables: readDeliverables(),
+      editorMode: readCurrentMode(),
       _raw: data
     });
   } catch (err) {
@@ -733,8 +779,14 @@ app.post('/api/ingest/prd', async (req, res) => {
     };
 
     if (ingestMode === 'reconcile') {
-      payload.reconciled = reconcileToPlan(markdown, merged);
+      // Surface phases (extracted by prdInterpreter) so the reconciler can
+      // emit a phaseQueue when the PRD has multiple top-level Phase headings.
+      const reconcilerInput = { ...merged, phases: local.phases || [] };
+      payload.reconciled = reconcileToPlan(markdown, reconcilerInput);
       payload.featureRequest = reconcileToFeatureRequest(merged, markdown);
+      // Also surface phases at top level for any client that wants to display
+      // "N phases detected" without inspecting the reconciled bundle.
+      payload.phases = local.phases || [];
     }
 
     logActivity('ingest', `PRD ingest (${ingestMode}, kind=${payload.kind}, conf=${aggregateConfidence.toFixed(2)})`, 'ok');

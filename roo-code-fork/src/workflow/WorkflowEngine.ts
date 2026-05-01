@@ -359,7 +359,12 @@ export class WorkflowEngine {
         options?: {
             manualStack?: string
             prefilledFeatureRequest?: string
-            reconciledPlan?: { phasePlan: string; detailedPlan: string; planReview: string }
+            reconciledPlan?: {
+                phasePlan: string
+                detailedPlan: string
+                planReview: string
+                phaseQueue?: { cycles: { number: number; title: string; body: string }[]; cursor: number; projectName: string } | null
+            }
         },
     ): Promise<{ success: boolean; error?: string }> {
         if (this.state.isRunning) {
@@ -399,15 +404,27 @@ export class WorkflowEngine {
             : `# Feature Request\n\n**Submitted:** ${new Date().toLocaleString()}\n\n## Description\n\n${finalRequest}\n`
         fs.writeFileSync(this.getActivePath("FEATURE_REQUEST.md"), content, "utf-8")
 
-        // Phase A: when a reconciled plan is supplied, materialise the triplet
-        // so gates 1-3 pass with real content rather than the legacy dummies.
+        // Phase A: when a reconciled plan is supplied, materialise PHASE_PLAN
+        // and DETAILED_PLAN so gates 1-2 pass and the Director has real content
+        // to review. PLAN_REVIEW.md is written as STATUS: PENDING — the Director
+        // must replace it with APPROVED or NEEDS_REVISION before -Next can
+        // advance. PLAN_APPROVED.md is intentionally NOT written here: it
+        // belongs to the Director after a real review.
         if (options?.reconciledPlan) {
             fs.writeFileSync(this.getActivePath("PHASE_PLAN.md"),    options.reconciledPlan.phasePlan, "utf-8")
             fs.writeFileSync(this.getActivePath("DETAILED_PLAN.md"), options.reconciledPlan.detailedPlan, "utf-8")
             fs.writeFileSync(this.getActivePath("PLAN_REVIEW.md"),   options.reconciledPlan.planReview, "utf-8")
-            // PLAN_APPROVED.md mirrors DETAILED_PLAN.md when the reconciler approved.
-            fs.writeFileSync(this.getActivePath("PLAN_APPROVED.md"), options.reconciledPlan.detailedPlan, "utf-8")
-            this.emit("info", "Reconciled plan applied: PHASE_PLAN, DETAILED_PLAN, PLAN_REVIEW (APPROVED), PLAN_APPROVED written")
+
+            // Multi-phase: persist queue so orchestrator.ps1 can advance through it
+            // on each COMPLETE. Lives at WORKFLOW/PHASE_QUEUE.json (not under ACTIVE
+            // because it survives across cycles).
+            if (options.reconciledPlan.phaseQueue && options.reconciledPlan.phaseQueue.cycles?.length > 1) {
+                const queuePath = path.join(this.workspaceRoot, "WORKFLOW", "PHASE_QUEUE.json")
+                fs.writeFileSync(queuePath, JSON.stringify(options.reconciledPlan.phaseQueue, null, 2), "utf-8")
+                this.emit("info", `Multi-phase project: ${options.reconciledPlan.phaseQueue.cycles.length} phases queued in WORKFLOW/PHASE_QUEUE.json`)
+            }
+
+            this.emit("info", "Reconciled plan applied: PHASE_PLAN, DETAILED_PLAN written; PLAN_REVIEW PENDING — Director must approve")
         }
 
         this.emit("info", `Cycle started: ${finalRequest.substring(0, 80)}...`)

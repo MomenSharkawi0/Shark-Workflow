@@ -13,12 +13,22 @@ import * as vscode from "vscode"
  */
 export class WorkflowStatusBar {
     private item: vscode.StatusBarItem
+    private resumeItem: vscode.StatusBarItem
     private updateTimer: NodeJS.Timeout | undefined
 
     constructor() {
         this.item = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100)
         this.item.command = "roo-code.showWorkflowStatus"
         this.item.tooltip = "Click to open workflow status"
+
+        // Always-visible Resume button — fallback if the watcher's auto-trigger
+        // misses (e.g. agent thread closed). Cheap to leave on; clicking is a
+        // no-op when the agent is mid-work because the resume prompt arrives
+        // as a follow-up message rather than starting a new task.
+        this.resumeItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 99)
+        this.resumeItem.command = "roo-code.resumeWorkflow"
+        this.resumeItem.tooltip = "Resend the 'read CURRENT_INSTRUCTION.md and proceed' trigger to the active agent"
+        this.resumeItem.text = "$(play) Resume Workflow"
     }
 
     update(status: {
@@ -56,6 +66,13 @@ export class WorkflowStatusBar {
         }
 
         this.item.show()
+
+        // Show Resume nudge while the workflow is active; hide on terminal states.
+        if (status.status === "COMPLETE" || status.currentState === "INIT") {
+            this.resumeItem.hide()
+        } else {
+            this.resumeItem.show()
+        }
     }
 
     private getElapsed(cycleStart: string): string {
@@ -94,5 +111,7 @@ export class WorkflowStatusBar {
         if (this.updateTimer) clearInterval(this.updateTimer)
         this.item.hide()
         this.item.dispose()
+        this.resumeItem.hide()
+        this.resumeItem.dispose()
     }
 }

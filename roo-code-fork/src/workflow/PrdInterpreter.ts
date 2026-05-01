@@ -355,14 +355,44 @@ function extractStackHints(md: string): FieldWithConfidence<string[]> {
 	return { value: Array.from(found), confidence: Math.min(1, 0.4 + found.size * 0.1) }
 }
 
+export interface ExtractedPhase {
+	number: number
+	title: string
+	body: string
+}
+
+/**
+ * Extract top-level phases from a PRD/plan markdown. Matches H2 headings of
+ * the form `## Phase 1: Title`, `## Phase 2 — Title`, `## Phase 3` (digit
+ * required, top-level only). Returns [] when fewer than 2 phases are found
+ * so callers can keep their single-phase fallback path. Mirror of
+ * extractPhases() in workflow-dashboard/lib/prdInterpreter.js.
+ */
+export function extractPhases(md: string): ExtractedPhase[] {
+	const sections = sliceSections(md)
+	const phases: ExtractedPhase[] = []
+	for (const sec of sections) {
+		if (sec.level !== 2) continue
+		const m = sec.heading.match(/^Phase\s+(\d+)\s*[:\-—–]?\s*(.*)$/i)
+		if (!m) continue
+		const number = parseInt(m[1], 10)
+		const title = (m[2] || "").trim() || `Phase ${number}`
+		phases.push({ number, title, body: sec.body || "" })
+	}
+	if (phases.length < 2) return []
+	return phases.sort((a, b) => a.number - b.number)
+}
+
 /** Convenience: combined classify + extract for the dashboard endpoint. */
 export function interpret(md: string): {
 	classification: ClassifyResult
 	fields: InterpretedPrd
+	phases: ExtractedPhase[]
 	confidence: number
 } {
 	const classification = classifyMarkdown(md)
 	const fields = extractFields(md)
+	const phases = extractPhases(md)
 	// Aggregate confidence: classification * average field confidence.
 	const fieldConfidences = [
 		fields.projectName.confidence,
@@ -373,6 +403,7 @@ export function interpret(md: string): {
 	return {
 		classification,
 		fields,
+		phases,
 		confidence: Math.min(1, classification.confidence * 0.5 + avgFieldConf * 0.5),
 	}
 }

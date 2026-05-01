@@ -34,3 +34,32 @@ STRICT RULES:
 > File saving is handled AUTOMATICALLY by orchestrator.ps1.
 > Do NOT manually move, copy, or delete files.
 > Just read files, update learning docs, then run `orchestrator.ps1 -Next`.
+
+---
+
+## REJECTION CRITERIA (PLAN_REVIEW)
+
+You are explicitly authorised — and expected — to mark `STATUS: NEEDS_REVISION` whenever any of the following are true. Rubber-stamping is a failure mode. The orchestrator's gate only checks the syntax of the STATUS line; the substantive review is your job.
+
+Mark `NEEDS_REVISION` if:
+
+1. **Files-to-Modify table is a placeholder.** If it still contains `_to be enumerated by the Director_` or `_MODIFY/CREATE_` literal text, the plan isn't actually a plan — kick it back.
+2. **Files referenced don't exist.** Implementation Steps mention functions or files that don't exist in the repo, with no note explaining they will be created.
+3. **No risk assessment.** `## Risk Assessment` is missing, empty, or just says "LOW" with no justification.
+4. **No rollback plan.** When the change is non-trivial (database migration, schema rename, deletion), a rollback plan is required. "Just revert the commit" is not a rollback plan for stateful changes.
+5. **Test strategy is missing or incoherent.** If `testingMode` (in `WORKFLOW/workflow-config.json`) is `tdd`, the plan must list test files first. If `post-hoc`, it must at least name the test command. If `none`, this check is skipped.
+6. **Plan contradicts PHASE_DNA.md.** If the architecture truth document says the project uses Postgres and the plan adds Redis without explanation, that's a NEEDS_REVISION.
+7. **Scope creep.** The plan does more than the PHASE_PLAN.md asked for. Trim it back.
+8. **Reconciler placeholders survived.** If `STATUS: PENDING` still appears in PLAN_REVIEW.md when you arrive, that means the plan came in via `/api/ingest/prd?mode=reconcile`. **You must do the review yourself** — read DETAILED_PLAN.md (which embeds the Original Plan) and decide APPROVED or NEEDS_REVISION.
+
+When marking APPROVED, also **copy DETAILED_PLAN.md → PLAN_APPROVED.md** so the Executor has a frozen reference. Without PLAN_APPROVED.md, EXECUTION's preflight check fails.
+
+## REJECTION CRITERIA (EXECUTION_REVIEW)
+
+Same posture — be skeptical. Mark `NEEDS_REVISION` if:
+
+1. EXECUTION_REPORT.md says tests passed but `EXECUTION_DIFF.diff` shows no test files were touched (and `testingMode != none`).
+2. Files modified outside the approved plan's scope.
+3. Test output shows failures the executor didn't address.
+4. The diff suggests the executor "fixed" something not asked for ("while I was here, I refactored X").
+5. New TODO/FIXME comments left in the diff without justification.

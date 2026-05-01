@@ -83,12 +83,15 @@ export class WorkflowWatcher {
 
                 if (targetMode) {
                     switchModeFn(targetMode)
+                    this.writeCurrentModeSidecar(statusFile, targetMode)
                     vscode.window.showInformationMessage(
                         `🤖 Workflow: ${newState} → Switched to ${targetMode.toUpperCase()} mode`
                     )
                 } else if (newState === "COMPLETE") {
+                    this.writeCurrentModeSidecar(statusFile, "")
                     vscode.window.showInformationMessage("✅ Workflow complete! All files archived.")
                 } else if (newState === "INIT") {
+                    this.writeCurrentModeSidecar(statusFile, "")
                     vscode.window.showInformationMessage("🔄 Workflow reset to INIT. Provide a feature request to begin.")
                 }
             }
@@ -100,6 +103,25 @@ export class WorkflowWatcher {
             } else {
                 console.error("[WorkflowWatcher] Failed to parse status file after max retries — skipping this change event.")
             }
+        }
+    }
+
+    /**
+     * Write WORKFLOW/CURRENT_MODE.json so the dashboard can show what mode the
+     * editor is currently in. Sidecar-style (separate file) — never mutates
+     * ORCHESTRATION_STATUS.json to avoid concurrent-write races with the
+     * orchestrator. Stale sidecars (>30s old) are ignored by the dashboard.
+     */
+    private writeCurrentModeSidecar(statusFile: string, mode: string) {
+        try {
+            const workflowDir = path.dirname(statusFile)
+            const sidecarPath = path.join(workflowDir, "CURRENT_MODE.json")
+            const payload = JSON.stringify({ mode, updatedAt: new Date().toISOString() })
+            const tmpPath = sidecarPath + ".tmp"
+            fs.writeFileSync(tmpPath, payload, "utf8")
+            fs.renameSync(tmpPath, sidecarPath)
+        } catch (err) {
+            console.warn("[WorkflowWatcher] Could not write CURRENT_MODE.json:", err)
         }
     }
 
