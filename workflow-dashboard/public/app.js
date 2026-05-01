@@ -889,9 +889,81 @@ function populateWizardStaticOptions() {
   fillSelect($('wizHosting'), o.infrastructure.hosting, { selected: 'self-hosted' });
   fillSelect($('wizTestE2e'), o.testing.e2e, { selected: 'playwright' });
 
+  // Game section (V6.2): engines + targets. Hidden until projectType=game.
+  if (o.game) {
+    fillSelect($('wizGameEngine'), o.game.engines, { selected: 'none' });
+    fillSelect($('wizGameTarget'), o.game.targets, { selected: 'desktop' });
+  }
+
   // Trigger dependent fields
   onBackendFrameworkChange();
   onMobileFrameworkChange();
+  onGameEngineChange();
+  onProjectTypeChange();
+}
+
+/**
+ * Toggle wizard sections based on the selected project type. The
+ * `sectionApplicability` map in wizard-options.json drives which sections are
+ * relevant for each type. A "game" project hides backend/frontend/mobile/database/
+ * auth and shows the game-engine section instead. Always-visible sections (basics,
+ * constraints) have no data-wiz-section attribute.
+ */
+function onProjectTypeChange() {
+  const o = WIZARD_OPTIONS;
+  if (!o) return;
+  const type = $('wizProjectType').value || '';
+  const map = o.sectionApplicability || {};
+
+  document.querySelectorAll('[data-wiz-section]').forEach((el) => {
+    const section = el.dataset.wizSection;
+    // auth-infra is a composite section — always visible (CI/hosting/testing apply everywhere)
+    if (section === 'auth-infra') return;
+    const applicable = map[section];
+    if (!applicable) { el.style.display = ''; return; } // unknown section: leave visible
+    if (!type) { el.style.display = ''; return; }       // no type chosen yet: show everything
+    el.style.display = applicable.includes(type) ? '' : 'none';
+  });
+
+  // For games, default backend/frontend/mobile/db to "none" so they don't pollute
+  // the FEATURE_REQUEST.md output even though they're hidden.
+  if (type === 'game') {
+    if ($('wizBackendFramework').value !== 'none')   { $('wizBackendFramework').value = 'none';   onBackendFrameworkChange(); }
+    if ($('wizFrontendFramework').value !== 'none')  { $('wizFrontendFramework').value = 'none'; }
+    if ($('wizMobileFramework').value !== 'none')    { $('wizMobileFramework').value = 'none';    onMobileFrameworkChange(); }
+    if ($('wizDbPrimary').value !== 'none')          { $('wizDbPrimary').value = 'none'; }
+    if ($('wizAuth').value !== 'none')               { $('wizAuth').value = 'none'; }
+  }
+}
+
+function onGameEngineChange() {
+  const o = WIZARD_OPTIONS;
+  if (!o || !o.game) return;
+  const engineId = $('wizGameEngine').value;
+  const engine = o.game.engines.find((e) => e.id === engineId);
+  const lang = engine && engine.language;
+  fillSelectFromStrings($('wizGameLanguageVersion'), lang ? o.game.languageVersions[lang] : [], { placeholder: lang ? `Pick ${lang} version` : 'n/a' });
+
+  // Surface engine extras (physics, render pipelines, etc.) when applicable.
+  const extras = (o.game.extras && o.game.extras[engineId]) || [];
+  const extrasRow = $('wizGameExtrasRow');
+  if (extras.length) {
+    fillSelect($('wizGameExtras'), extras);
+    if (extrasRow) extrasRow.style.display = 'block';
+  } else if (extrasRow) {
+    extrasRow.style.display = 'none';
+  }
+
+  // Pick a sensible unit-test framework for the engine's language so Gate 4 has
+  // something concrete. Falls back to "(none)" when the language isn't tested.
+  const testingMap = {
+    python: o.testing.unit.python,
+    node:   o.testing.unit.node,
+    dotnet: o.testing.unit.dotnet,
+    rust:   o.testing.unit.rust,
+  };
+  const unitItems = (lang && testingMap[lang]) ? testingMap[lang] : [{ id: 'none', label: '(no unit framework — use the engine’s own test runner)' }];
+  fillSelect($('wizTestUnit'), unitItems);
 }
 
 function onBackendFrameworkChange() {
@@ -987,6 +1059,21 @@ function buildWizardConfig() {
       unit: $('wizTestUnit').selectedOptions[0]?.text || '',
       e2e: $('wizTestE2e').selectedOptions[0]?.text || '',
     },
+    game: (function () {
+      const engineEl = $('wizGameEngine');
+      if (!engineEl || !o.game) return null;
+      const engineId = engineEl.value;
+      if (!engineId || engineId === 'none') return null;
+      const engine = o.game.engines.find((e) => e.id === engineId);
+      return {
+        engine: engineEl.selectedOptions[0]?.text || engineId,
+        engineId,
+        language: (engine && engine.language) || '',
+        languageVersion: $('wizGameLanguageVersion').value || '',
+        target: $('wizGameTarget').selectedOptions[0]?.text || '',
+        extras: readMultiSelect($('wizGameExtras')).map((id) => o.game.extras?.[engineId]?.find((x) => x.id === id)?.label || id),
+      };
+    })(),
     constraints: $('wizConstraints').value.trim(),
     successCriteria: $('wizSuccess').value.trim(),
     autonomy: $('wizAutonomy').value || 'semi-auto',

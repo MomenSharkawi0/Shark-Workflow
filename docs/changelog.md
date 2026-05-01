@@ -2,6 +2,62 @@
 
 All notable changes to Roo Workflow are documented here.
 
+## v6.2.0 — Game-aware wizard + Director rating gate (2026-05-01)
+
+Two complaints from a real-world V6.1 session: the wizard offered FastAPI for a Python game project (no game engines listed at all), and the Director was still rubber-stamping plans because no numeric rating was required. Both fixed. Test count: **82/82 green** (+3 new in suite `12b`).
+
+### Game project type + smart section toggling
+
+V6.1's wizard was web/mobile/API-centric. Picking "build a snake game in Python" gave you Laravel, FastAPI, and Django as options — none appropriate. There was no game project type, no game engine list, and no way to hide irrelevant sections.
+
+- **New** `"game"` entry in `projectTypes` ("Game / interactive (2D / 3D)").
+- **New** top-level `game` section in `wizard-options.json` with 22 engines grouped by language:
+  - **Python** — pygame, arcade, pyglet, ursina, panda3d, kivy, raylib-py
+  - **JavaScript** — phaser, three.js, babylon.js, pixi.js, html-canvas
+  - **C#** — Godot-cs, Unity, MonoGame
+  - **GDScript** — Godot-gd
+  - **Lua** — Love2D
+  - **C / C++** — raylib, SFML
+  - **Rust** — Bevy, ggez, Macroquad
+- **New** `targets` enum (desktop / browser / mobile / console / multi) and per-language `languageVersions` map.
+- **New** `extras` map for engine-specific add-ons (e.g. `bevy_rapier` for Bevy, `URP / Input System / Addressables` for Unity, `Godot Jolt` for Godot).
+- **New** `sectionApplicability` map drives **smart section toggling** — pick "Game" and the dashboard hides Backend / Frontend / Mobile / Database / Auth (none of which a typical game needs) and shows the Game section instead. Hidden sections auto-default to "none" so FEATURE_REQUEST.md stays clean.
+- **Frontend** — new `onProjectTypeChange()` and `onGameEngineChange()` handlers in `app.js`. The Game section's testing dropdown auto-switches to the engine's language unit-test framework (pytest for Python engines, vitest for JS engines, xUnit for C#, cargo-test for Rust).
+- **server.js** `buildFeatureRequest()` — surfaces engine + target + extras under a "Game engine" / "Target platform" block in FEATURE_REQUEST.md so the Director writes a game-appropriate plan instead of inventing a backend stack. `stackSummary` includes the engine.
+
+### Director rating: numeric score on every review
+
+V6.1 added rejection criteria but the Director could still APPROVE a thin plan with no real evaluation. V6.2 makes the rating mandatory — Gate 3 and Gate 5 enforce it.
+
+- **New** required fields in every `PLAN_REVIEW.md` and `EXECUTION_REVIEW.md`:
+  ```
+  STATUS: APPROVED            (or NEEDS_REVISION)
+  RATING: 8/10                (numeric 1-10; regex `(10|[1-9])\s*/\s*10`)
+  RATING_REASONING: <one or two lines explaining the score>
+  ```
+- **Gate 3** ([orchestrator.ps1:1025](orchestrator.ps1:1025)) — checks all three; reports each missing field by name in the failure message.
+- **Gate 5** ([orchestrator.ps1:1042](orchestrator.ps1:1042)) — same enforcement for execution review.
+- **GateValidator.ts** — TS twin updated to mirror the PS-side regex exactly. Cross-reference comment ties them together.
+- **Score guide** documented in [.roo/rules/director-rules.md](.roo/rules/director-rules.md): 9-10 comprehensive, 7-8 solid, 5-6 borderline (usually NEEDS_REVISION), 3-4 significant gaps, 1-2 broken.
+- **Workflow Master rules** — both PLAN_REVIEW and EXECUTION_REVIEW sections now show the three-field template with explicit "RATING is required even when STATUS is APPROVED" guidance.
+
+### Tests
+
+- **+3 new tests** in suite `12b. V6.1 reliability fixes` (now mixed V6.1+V6.2 fixes):
+  - Gate 3 rejects PLAN_REVIEW.md missing RATING.
+  - Gate 5 rejects EXECUTION_REVIEW.md missing RATING_REASONING.
+  - Wizard exposes `game` project type + Pygame/Godot engines + sectionApplicability map.
+- **Updated** existing Gate 3 / Gate 5 fixtures and 5-strike enforcement test to include `RATING` + `RATING_REASONING`.
+- **82/82 green**, ~43s full-run.
+
+### Architectural notes
+
+- Section toggling is **schema-driven** (the `sectionApplicability` map) rather than hardcoded in the frontend, so adding a new project type only needs a JSON edit.
+- The `game` section reuses the existing `testing.unit.<language>` map so no parallel test-framework matrix is needed — pygame projects automatically get pytest as the unit test framework; Bevy projects get cargo-test; Unity projects get xUnit.
+- The RATING gate uses a tight regex `(10|[1-9])\s*/\s*10` that accepts `8/10`, `8 / 10`, `10/10`, but rejects `0/10`, `11/10`, or any non-numeric text. Forces the Director to commit to a real number.
+
+---
+
 ## v6.1.0 — Reliability fixes: autopilot stall, Gate 4, multi-phase, Director rigor (2026-05-01)
 
 A focused reliability release driven by a real-world session that surfaced six interlocking failure modes in V6.0. Each fix is independently verified by the test suite (now **79/79 green**, +4 new tests in suite `12b`).
