@@ -2,6 +2,38 @@
 
 All notable changes to Roo Workflow are documented here.
 
+## v6.3.0 — Preserve workflow-master + slim autopilot prompts (2026-05-01)
+
+Two follow-up bugs from a real V6.2 autopilot session:
+
+### Autopilot stopped at PLAN_REVIEW APPROVED with "I can't execute commands in director mode"
+
+The user was running in **workflow-master** mode with autopilot ON. After the Planner finished DETAILED_PLAN.md, the engine's `advancePhase` (and the watcher) called `provider.setMode("director")` — downgrading the agent from `workflow-master` (which has `command` + `edit-all` permissions) to `director` (which only has `edit *.md`). The Director then refused to run `.\orchestrator.ps1 -Next` and the loop died.
+
+- **Changed** `WorkflowEngine.advancePhase` ([WorkflowEngine.ts:457-475](roo-code-fork/src/workflow/WorkflowEngine.ts:457)) — reads `provider.getCurrentMode()`; skips `setMode` when the agent is already in `workflow-master`. Workflow Master shape-shifts personas internally based on `currentState` while keeping all its permissions.
+- **Changed** `WorkflowWatcher` callback in [index.ts](roo-code-fork/src/workflow/index.ts) — same logic: when current mode is `workflow-master`, do NOT downgrade. The role slug (director/planner/executor) is still exposed via `globalThis.__rooWorkflowMode` so the ContextInjector + token-budget logic still respects the workflow role for that phase.
+- **Updated** [`.roo/rules/workflow-master-rules.md`](.roo/rules/workflow-master-rules.md) — explicit "you stay in workflow-master mode for the entire cycle; shape-shift the persona, not the Roo mode" guidance.
+
+### FEATURE_REQUEST.md re-pasted into chat on every phase transition
+
+The engine's `generatePrompt()` ([WorkflowEngine.ts:743](roo-code-fork/src/workflow/WorkflowEngine.ts:743)) prepended the entire FEATURE_REQUEST.md content to every phase prompt. With autopilot on a 5-level Snake game (~6+ phase transitions), the same multi-paragraph project brief was re-sent to chat each time, bloating context and burning tokens.
+
+- **Changed** `generatePrompt()` — no longer prepends `## Feature Request\n${featureRequest}`. The agent already has it via:
+  1. `WORKFLOW/ACTIVE/FEATURE_REQUEST.md` on disk (written once at cycle start).
+  2. `ContextInjector` auto-injecting `WORKFLOW/ACTIVE/CURRENT_INSTRUCTION.md` and the role-specific files.
+- The new tail-line just points the agent at those two files: `_Project brief is in WORKFLOW/ACTIVE/FEATURE_REQUEST.md ... The current step's instruction is in WORKFLOW/ACTIVE/CURRENT_INSTRUCTION.md._`
+
+### Tests
+
+- 82/82 still passing — no test changes required (the bug was in the live engine prompt path, not in any tested code path).
+
+### Architectural notes
+
+- This makes Workflow Master the **only** mode that survives a full autopilot cycle. Director / Planner / Executor remain available for users who want manual control of each phase.
+- The fix preserves the existing `setMode` swap for users who started a cycle in director / planner / executor mode (manual flow). Only autopilot users in workflow-master are affected — and they were the ones being broken.
+
+---
+
 ## v6.2.0 — Game-aware wizard + Director rating gate (2026-05-01)
 
 Two complaints from a real-world V6.1 session: the wizard offered FastAPI for a Python game project (no game engines listed at all), and the Director was still rubber-stamping plans because no numeric rating was required. Both fixed. Test count: **82/82 green** (+3 new in suite `12b`).

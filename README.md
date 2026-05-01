@@ -2,7 +2,7 @@
 
 > A multi-agent orchestration framework that turns [Roo Code](https://github.com/RooCodeInc/Roo-Code) into a structured **software factory**: enforced state machine, persistent memory, quality gates, and full autopilot.
 
-[![Version](https://img.shields.io/badge/version-6.2.0-blue.svg)](docs/changelog.md)
+[![Version](https://img.shields.io/badge/version-6.3.0-blue.svg)](docs/changelog.md)
 [![License](https://img.shields.io/badge/license-Apache%202.0-green.svg)](LICENSE)
 [![Tests](https://img.shields.io/badge/tests-82%2F82%20passing-brightgreen.svg)](tests/README.md)
 [![PowerShell](https://img.shields.io/badge/PowerShell-7%2B-5391FE.svg)](https://github.com/PowerShell/PowerShell)
@@ -27,6 +27,13 @@ INIT  →  PHASE_PLANNING  →  DETAILED_PLANNING  →  PLAN_REVIEW  →  EXECUT
 ```
 
 ---
+
+## What's new in V6.3 (autopilot lives, prompts slim down)
+
+Two follow-up fixes after a real V6.2 autopilot run.
+
+- **Autopilot no longer dies at PLAN_REVIEW.** The engine and watcher used to swap the Roo mode to `director` on plan-review transitions, which strips the `command` permission and leaves the Director unable to run `.\orchestrator.ps1 -Next`. V6.3 preserves `workflow-master` (which has all permissions) for the entire autopilot cycle — the Workflow Master shape-shifts the persona internally based on `currentState` rather than swapping Roo modes.
+- **No more re-pasting FEATURE_REQUEST.md every transition.** The engine's autopilot prompt prepended the full feature request to every phase trigger — with a 5-level Snake game that meant the same multi-paragraph brief landed in chat 6+ times. V6.3 just points the agent at `WORKFLOW/ACTIVE/FEATURE_REQUEST.md` and `WORKFLOW/ACTIVE/CURRENT_INSTRUCTION.md` (both already loaded via ContextInjector).
 
 ## What's new in V6.2 (game-aware wizard + Director ratings)
 
