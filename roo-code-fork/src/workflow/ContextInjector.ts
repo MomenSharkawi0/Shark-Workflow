@@ -19,6 +19,7 @@ export class ContextInjector {
     private static readonly DEFAULT_CONTEXT_FILES: Record<string, string[]> = {
         "director": [
             "WORKFLOW/ORCHESTRATION_STATUS.json",
+            "WORKFLOW/ACTIVE/GATE_FAILURE.md",
             "WORKFLOW/ACTIVE/CURRENT_INSTRUCTION.md",
             "WORKFLOW/ACTIVE/PHASE_PLAN.md",
             "WORKFLOW/ACTIVE/DETAILED_PLAN.md",
@@ -29,6 +30,7 @@ export class ContextInjector {
         ],
         "planner": [
             "WORKFLOW/ORCHESTRATION_STATUS.json",
+            "WORKFLOW/ACTIVE/GATE_FAILURE.md",
             "WORKFLOW/ACTIVE/CURRENT_INSTRUCTION.md",
             "WORKFLOW/ACTIVE/PHASE_PLAN.md",
             "WORKFLOW/LESSONS_LEARNED.md",
@@ -38,12 +40,14 @@ export class ContextInjector {
         ],
         "executor": [
             "WORKFLOW/ORCHESTRATION_STATUS.json",
+            "WORKFLOW/ACTIVE/GATE_FAILURE.md",
             "WORKFLOW/ACTIVE/CURRENT_INSTRUCTION.md",
             "WORKFLOW/ACTIVE/PLAN_APPROVED.md",
             "WORKFLOW/LESSONS_LEARNED.md",
         ],
         "workflow-master": [
             "WORKFLOW/ORCHESTRATION_STATUS.json",
+            "WORKFLOW/ACTIVE/GATE_FAILURE.md",
             "WORKFLOW/ACTIVE/CURRENT_INSTRUCTION.md",
             "WORKFLOW/ACTIVE/PHASE_PLAN.md",
             "WORKFLOW/ACTIVE/DETAILED_PLAN.md",

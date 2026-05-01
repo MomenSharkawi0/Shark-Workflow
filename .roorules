@@ -3,10 +3,29 @@
 ## STRICT AUTONOMY PROTOCOL
 This protocol controls whether the workflow operates as a continuous loop or requires manual advancement.
 
-1. **Check Autopilot State:** After successfully completing the required actions for any phase (e.g., writing the necessary files), you MUST read WORKFLOW/ORCHESTRATION_STATUS.json and check the utopilot field.
+1. **Check Autopilot State:** After successfully completing the required actions for any phase (e.g., writing the necessary files), you MUST read WORKFLOW/ORCHESTRATION_STATUS.json and check the autopilot field.
 2. **If Autopilot is OFF:** You MUST STOP and wait. DO NOT run the orchestrator. Simply inform the user you have finished and they should click "Next Phase" in the dashboard.
 3. **If Autopilot is ON:**
    - **Auto-Advance:** You MUST autonomously run the command: .\orchestrator.ps1 -Next
    - **Read Output:** You MUST read the terminal output to determine the new system state.
    - **Continuous Execution:** If the new state is NOT COMPLETE and NOT BLOCKED, you MUST immediately begin performing the tasks required for the newly assigned state. Do not stop to ask the user what to do next.
 4. **Unrestricted Action:** When Autopilot is ON, you are fully authorized to run commands, edit files, and recursively advance the orchestrator state until COMPLETE or BLOCKED.
+
+## GATE FAILURE RECOVERY (V6.4)
+
+If `.\orchestrator.ps1 -Next` exits non-zero with a `Quality Gate FAILED` message, the orchestrator has written `WORKFLOW/ACTIVE/GATE_FAILURE.md` describing exactly what's missing and how to fix it. **You must NOT stop and tell the user to "run -Next again"** — that will fail the same way. Instead:
+
+1. **Read** `WORKFLOW/ACTIVE/GATE_FAILURE.md` (it is auto-injected into your context).
+2. **Edit** the failing deliverable file to add the missing fields/sections. The file is named in the GATE_FAILURE.md.
+3. **Re-run** `.\orchestrator.ps1 -Next`.
+4. **If it succeeds**, GATE_FAILURE.md is auto-deleted by the orchestrator. Continue with the new state.
+5. **If it fails again** with the same gate, you have at most 3 retry attempts. Each retry must show a **different** fix. After 3 same-gate failures, write your investigation to `WORKFLOW/ACTIVE/ESCALATION.md` and stop.
+
+Common cases:
+
+- **Gate 4 missing `## Tests Run`** — you (Executor) didn't run the test suite. Run it now (e.g. `pytest`, `npm test`, `cargo test`) and paste the output under a `## Tests Run` heading. If tests genuinely cannot run yet because deps aren't installed and the user must do that first, **set `testingMode: "none"` in `WORKFLOW/workflow-config.json` AND include the marker `_Skipped: testingMode=none_` in the report**. Document the user's setup steps in the report so they're not lost.
+- **Gate 4 missing `## Files Modified|Created|Changed`** — add the heading with the actual file list as a markdown table or bullet list.
+- **Gate 3 / Gate 5 missing `RATING`** — add `RATING: N/10` (1-10) and `RATING_REASONING: <one or two lines>`.
+- **Gate 3 missing `STATUS`** — replace `STATUS: PENDING` with `STATUS: APPROVED` or `STATUS: NEEDS_REVISION`.
+
+This recovery loop runs WITHOUT user intervention when autopilot is ON.

@@ -83,6 +83,7 @@ const DEFAULT_CONFIG: WorkflowConfig = {
     contextFiles: {
         "director": [
             "WORKFLOW/ORCHESTRATION_STATUS.json",
+            "WORKFLOW/ACTIVE/GATE_FAILURE.md",
             "WORKFLOW/ACTIVE/CURRENT_INSTRUCTION.md",
             "WORKFLOW/ACTIVE/PHASE_PLAN.md",
             "WORKFLOW/ACTIVE/DETAILED_PLAN.md",
@@ -93,6 +94,7 @@ const DEFAULT_CONFIG: WorkflowConfig = {
         ],
         "planner": [
             "WORKFLOW/ORCHESTRATION_STATUS.json",
+            "WORKFLOW/ACTIVE/GATE_FAILURE.md",
             "WORKFLOW/ACTIVE/CURRENT_INSTRUCTION.md",
             "WORKFLOW/ACTIVE/PHASE_PLAN.md",
             "WORKFLOW/LESSONS_LEARNED.md",
@@ -102,12 +104,14 @@ const DEFAULT_CONFIG: WorkflowConfig = {
         ],
         "executor": [
             "WORKFLOW/ORCHESTRATION_STATUS.json",
+            "WORKFLOW/ACTIVE/GATE_FAILURE.md",
             "WORKFLOW/ACTIVE/CURRENT_INSTRUCTION.md",
             "WORKFLOW/ACTIVE/PLAN_APPROVED.md",
             "WORKFLOW/LESSONS_LEARNED.md",
         ],
         "workflow-master": [
             "WORKFLOW/ORCHESTRATION_STATUS.json",
+            "WORKFLOW/ACTIVE/GATE_FAILURE.md",
             "WORKFLOW/ACTIVE/CURRENT_INSTRUCTION.md",
             "WORKFLOW/ACTIVE/PHASE_PLAN.md",
             "WORKFLOW/ACTIVE/DETAILED_PLAN.md",
@@ -217,14 +221,34 @@ export function activateWorkflowIntegration(
     // 1. Auto Mode-Switch Watcher
     const watcher = new WorkflowWatcher()
     watcher.activate(workspaceRoot, (slug) => {
-        // Expose current mode for token budget resolution in the API layer
+        // V6.3: PRESERVE workflow-master through state transitions.
+        //
+        // Workflow Master has command + edit-all permissions and is designed
+        // to shape-shift internally based on `currentState`. Downgrading it
+        // mid-cycle to director/planner strips its `command` permission and
+        // breaks autopilot — the Director cannot run `.\orchestrator.ps1
+        // -Next`, so the loop dies at the first PLAN_REVIEW.
+        //
+        // The role context (PHASE_PLAN, DETAILED_PLAN, CURRENT_INSTRUCTION,
+        // etc.) is still injected for whichever workflow role the new state
+        // implies, regardless of which Roo mode the user is actually in.
+        const currentMode = provider.getCurrentMode ? provider.getCurrentMode() : null
+        const targetMode = currentMode === "workflow-master" ? "workflow-master" : slug
+
+        // Expose the workflow role (slug) for token-budget resolution even
+        // when we don't physically swap modes — token budgets still respect
+        // the role being adopted.
         ;(globalThis as any).__rooWorkflowMode = slug
 
-        if (provider.setMode) {
-            provider.setMode(slug)
+        if (provider.setMode && targetMode !== currentMode) {
+            provider.setMode(targetMode)
         }
 
-        // Also inject context after mode switch
+        // Also inject context after mode switch.
+        //
+        // Use the role slug (not the physical mode) so a workflow-master
+        // adopting the Director persona for PLAN_REVIEW still receives the
+        // Director's context files (DETAILED_PLAN.md, etc.).
         const injector = new ContextInjector(_activeConfig.contextFiles, _activeConfig.maxContextFileSizeKb)
         const contextBlock = injector.getInjectedContext(slug, workspaceRoot)
         if (contextBlock && provider.getSystemPrompt && provider.setSystemPrompt) {

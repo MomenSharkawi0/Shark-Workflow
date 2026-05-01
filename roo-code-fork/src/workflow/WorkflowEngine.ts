@@ -457,11 +457,21 @@ export class WorkflowEngine {
         const config = PHASE_CONFIG[nextPhase]
         this.state.currentMode = config.mode
 
-        // Switch agent mode
+        // Switch agent mode — but PRESERVE workflow-master.
+        //
+        // Workflow Master has command + edit-all permissions and is designed to
+        // shape-shift internally based on `currentState`. Downgrading it to
+        // director/planner mid-cycle strips its `command` permission and breaks
+        // autopilot (Director can't run `.\orchestrator.ps1 -Next`).
         if (this.provider.setMode) {
             try {
-                await this.provider.setMode(config.mode)
-                this.emit("mode", `Mode switched to ${config.mode.toUpperCase()}`)
+                const currentMode = this.provider.getCurrentMode ? this.provider.getCurrentMode() : null
+                if (currentMode === "workflow-master") {
+                    this.emit("mode", `Workflow Master preserved for ${nextPhase} (no mode swap)`)
+                } else {
+                    await this.provider.setMode(config.mode)
+                    this.emit("mode", `Mode switched to ${config.mode.toUpperCase()}`)
+                }
             } catch (err) {
                 this.emit("error", `Failed to switch mode: ${err}`)
             }
@@ -735,9 +745,15 @@ Respond with ONLY a valid JSON object, no other text:
         const config = PHASE_CONFIG[this.state.phase]
         let prompt = config.promptTemplate
 
-        // Add feature request context
+        // V6.3: don't paste the entire FEATURE_REQUEST.md into the chat on every
+        // phase transition — it bloats the conversation, costs tokens, and the
+        // agent already has the same content via:
+        //   1. WORKFLOW/ACTIVE/FEATURE_REQUEST.md (written once at cycle start)
+        //   2. ContextInjector (auto-injects WORKFLOW/ACTIVE/CURRENT_INSTRUCTION.md
+        //      and the role-specific files)
+        // Just remind the agent where to find the brief.
         if (this.state.featureRequest) {
-            prompt = `## Feature Request\n${this.state.featureRequest}\n\n## Your Task\n${prompt}`
+            prompt = `${prompt}\n\n_Project brief is in WORKFLOW/ACTIVE/FEATURE_REQUEST.md (read once if you haven't already). The current step's instruction is in WORKFLOW/ACTIVE/CURRENT_INSTRUCTION.md._`
         }
 
         // Add detected stack context (UNIVERSAL)

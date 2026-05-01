@@ -47,5 +47,13 @@ The orchestrator's Quality Gate 4 enforces these headings. Pick the one that mat
 
 Plus:
 
-- **`## Tests Run`** — paste the actual test command output (or a clear "all green" / "N failed" summary). Required by default.
-  - If `WORKFLOW/workflow-config.json` has `"testingMode": "none"`, you may instead include the marker `_Skipped: testingMode=none_` anywhere in the report. Only do this when the user explicitly opted out of tests; never as a shortcut.
+- **`## Tests Run`** — paste the **actual** test command output. Required by default.
+  - **You MUST run the test command yourself before writing the report.** Examples: `pytest`, `npm test`, `cargo test`, `php artisan test`, `dotnet test`. Run from the project root. Paste the full output (or the summary line plus failures) under the `## Tests Run` heading.
+  - **Don't fake this.** "Tests pass" with no command output is a Gate 4 violation in spirit. The Director's Gate 5 review will reject reports that claim tests passed without showing output.
+  - If the test runner errors because **dependencies aren't installed yet** and the user must run `pip install -r requirements.txt` (or `npm install`, etc.) first, you have two options:
+    1. **Run the install command yourself** if you can. Then run the tests.
+    2. **Set `testingMode: "none"` in `WORKFLOW/workflow-config.json`**, include the marker `_Skipped: testingMode=none_` in the report, AND document the exact setup commands the user must run. Use this only as a fallback — running the tests yourself is always preferred.
+
+## On gate failure
+
+If `.\orchestrator.ps1 -Next` exits non-zero with `Quality Gate 4 FAILED`, read `WORKFLOW/ACTIVE/GATE_FAILURE.md` (auto-written by the orchestrator) for the exact fix. Edit the report, re-run `-Next`. Do NOT just tell the user to run it again — that will fail the same way.

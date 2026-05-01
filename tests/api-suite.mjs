@@ -758,6 +758,36 @@ suite('12b. V6.1 reliability fixes', () => {
     assert.contains(r.stdout + r.stderr, 'RATING_REASONING')
   })
 
+  test('Gate failure (V6.4): writes GATE_FAILURE.md with recovery instructions', async () => {
+    await runOrchestrator(workspace.dir, ['-Reset', '-SkipGit'])
+    await runOrchestrator(workspace.dir, ['-Next', '-SkipGit'])
+    writeFile(workspace.dir, 'WORKFLOW/ACTIVE/PHASE_PLAN.md', '# Phase Plan\n\n## Phase 1: x\nGoal: y.')
+    await runOrchestrator(workspace.dir, ['-Next', '-SkipGit'])
+    writeFile(workspace.dir, 'WORKFLOW/ACTIVE/DETAILED_PLAN.md',
+      '# Detailed\n## Files to Modify\n| File | Action |\n|---|---|\n| x.md | CREATE |\n## Implementation Steps\n1. Do.')
+    await runOrchestrator(workspace.dir, ['-Next', '-SkipGit'])
+    // Submit a deliberately-broken PLAN_REVIEW.md (STATUS only, no RATING)
+    writeFile(workspace.dir, 'WORKFLOW/ACTIVE/PLAN_REVIEW.md', '# Review\nSTATUS: APPROVED')
+    const r = await runOrchestrator(workspace.dir, ['-Next', '-SkipGit'])
+    assert.notOk(r.code === 0, 'Gate 3 should reject when RATING is missing')
+    // Recovery file should now exist with instructions naming the missing fields
+    const failurePath = join(workspace.dir, 'WORKFLOW/ACTIVE/GATE_FAILURE.md')
+    assert.ok(existsSync(failurePath), 'GATE_FAILURE.md should be auto-written on gate failure')
+    const failureContent = readFileSync(failurePath, 'utf-8')
+    assert.contains(failureContent, 'Gate 3')
+    assert.contains(failureContent, 'PLAN_REVIEW.md')
+    assert.contains(failureContent, 'RATING')
+    assert.contains(failureContent, 'Autonomy protocol')
+    // After fixing the deliverable, GATE_FAILURE.md should be auto-deleted on success
+    writeFile(workspace.dir, 'WORKFLOW/ACTIVE/PLAN_REVIEW.md',
+      '# Review\nSTATUS: APPROVED\nRATING: 8/10\nRATING_REASONING: covers all required fields after recovery.')
+    writeFile(workspace.dir, 'WORKFLOW/ACTIVE/PLAN_APPROVED.md',
+      '# Approved\n## Files to Modify\n| File | Action |\n|---|---|\n| x.md | CREATE |\n## Implementation Steps\n1. Do.')
+    const r2 = await runOrchestrator(workspace.dir, ['-Next', '-SkipGit'])
+    assert.equal(r2.code, 0, `recovery -Next should succeed: ${r2.stdout}\n${r2.stderr}`)
+    assert.equal(existsSync(failurePath), false, 'GATE_FAILURE.md should be auto-deleted on successful transition')
+  })
+
   test('Wizard: game project type + Pygame engine in wizard-options.json', async () => {
     const r = await http(`${dashboard.base}/api/wizard/options`)
     assert.status(r, 200)
